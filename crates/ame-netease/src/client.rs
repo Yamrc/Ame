@@ -56,8 +56,10 @@ impl NeteaseClient {
             return Err(Error::Http(status, text));
         }
 
-        if let Some(decrypted) = eapi::decrypt(&text) {
-            return Ok(serde_json::from_str(&decrypted)?);
+        match eapi::decrypt(&text) {
+            Ok(Some(decrypted)) => return Ok(serde_json::from_str(&decrypted)?),
+            Ok(None) => {}
+            Err(_) => {}
         }
 
         Ok(serde_json::from_str(&text)?)

@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "ame"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "ame-audio",
  "ame-core",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "ame-audio"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "ame-core",
  "cpal",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "ame-core"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "ame-netease"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "aes",
  "base64",

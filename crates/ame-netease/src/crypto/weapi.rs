@@ -42,19 +42,19 @@ fn aes_cbc_encrypt(data: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
 
     let pad_len = 16 - (data.len() % 16);
     let mut buf = data.to_vec();
-    buf.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+    buf.extend(std::iter::repeat_n(pad_len as u8, pad_len));
 
     let encryptor = Aes128CbcEnc::new(key.into(), iv.into());
     let len = buf.len();
     encryptor
         .encrypt_padded_mut::<aes::cipher::block_padding::NoPadding>(&mut buf, len)
-        .unwrap();
+        .expect("padding is correct");
 
     buf
 }
 
 fn rsa_encrypt(data: &[u8]) -> String {
-    let n = num_bigint::BigUint::parse_bytes(PUBKEY_N, 16).unwrap();
+    let n = num_bigint::BigUint::parse_bytes(PUBKEY_N, 16).expect("pubkey is valid hex");
     let e = num_bigint::BigUint::from(PUBKEY_E);
     let m = num_bigint::BigUint::from_bytes_be(&pad_rsa(data));
     format!("{:0>256x}", m.modpow(&e, &n))

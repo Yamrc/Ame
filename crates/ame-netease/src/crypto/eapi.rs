@@ -2,6 +2,8 @@ use aes::Aes128;
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use md5::{Digest, Md5};
 
+use super::{Error, Result};
+
 const KEY: &[u8; 16] = b"e82ckenh8dichen8";
 
 pub fn encrypt(url: &str, data: &str) -> String {
@@ -12,7 +14,7 @@ pub fn encrypt(url: &str, data: &str) -> String {
         Md5::digest(format!("nobody{}use{}md5forencrypt", url, data))
     );
 
-    let cipher = Aes128::new_from_slice(KEY).unwrap();
+    let cipher = Aes128::new_from_slice(KEY).expect("key length is valid");
     let body_bytes = body.as_bytes();
 
     let pad_len = 16 - (body_bytes.len() % 16);
@@ -33,9 +35,9 @@ pub fn encrypt(url: &str, data: &str) -> String {
     result
 }
 
-pub fn decrypt(data: &str) -> Option<String> {
-    let bytes = hex::decode(data).ok()?;
-    let cipher = Aes128::new_from_slice(KEY).unwrap();
+pub fn decrypt(data: &str) -> Result<Option<String>> {
+    let bytes = hex::decode(data)?;
+    let cipher = Aes128::new_from_slice(KEY).map_err(|_| Error::InvalidKeyLength)?;
 
     let mut result = Vec::with_capacity(bytes.len());
     for chunk in bytes.chunks_exact(16) {
@@ -57,5 +59,5 @@ pub fn decrypt(data: &str) -> Option<String> {
         }
     }
 
-    String::from_utf8(result).ok()
+    Ok(String::from_utf8(result).ok())
 }
