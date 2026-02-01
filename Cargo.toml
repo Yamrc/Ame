@@ -6,7 +6,17 @@ resolver = "3"
 version = "0.0.4"
 edition = "2024"
 license = "MPL-2.0"
+description = "Third-party ncm client."
 authors = ["Yamrc <yamrci@outlook.com>"]
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true
 
 [workspace.dependencies]
 tracing = "0.1.44"
