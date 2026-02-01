@@ -13,49 +13,37 @@ pub fn encrypt(url: &str, data: &str) -> String {
     );
 
     let cipher = Aes128::new_from_slice(KEY).unwrap();
-
     let body_bytes = body.as_bytes();
+
     let pad_len = 16 - (body_bytes.len() % 16);
-    let mut padded: Vec<u8> = body_bytes.to_vec();
-    padded.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+    let total_len = body_bytes.len() + pad_len;
+    let mut padded = Vec::with_capacity(total_len);
+    padded.extend_from_slice(body_bytes);
+    padded.extend(std::iter::repeat_n(pad_len as u8, pad_len));
 
-    let mut blocks: Vec<_> = padded
-        .chunks(16)
-        .map(|chunk| {
-            let mut block = [0u8; 16];
-            block.copy_from_slice(chunk);
-            aes::cipher::generic_array::GenericArray::from(block)
-        })
-        .collect();
-
-    cipher.encrypt_blocks(&mut blocks);
-
-    blocks
-        .iter()
-        .flat_map(|b| b.iter())
-        .map(|b| format!("{:02X}", b))
-        .collect()
+    let mut result = String::with_capacity(total_len * 2);
+    for chunk in padded.chunks_exact(16) {
+        let mut block = aes::cipher::generic_array::GenericArray::from([0u8; 16]);
+        block.copy_from_slice(chunk);
+        cipher.encrypt_block(&mut block);
+        for &b in block.iter() {
+            result.push_str(&format!("{:02X}", b));
+        }
+    }
+    result
 }
 
 pub fn decrypt(data: &str) -> Option<String> {
-    let bytes: Vec<u8> = (0..data.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&data[i..i + 2], 16).ok())
-        .collect::<Option<Vec<_>>>()?;
-
+    let bytes = hex::decode(data).ok()?;
     let cipher = Aes128::new_from_slice(KEY).unwrap();
-    let mut blocks: Vec<_> = bytes
-        .chunks(16)
-        .map(|chunk| {
-            let mut block = [0u8; 16];
-            block.copy_from_slice(chunk);
-            aes::cipher::generic_array::GenericArray::from(block)
-        })
-        .collect();
 
-    cipher.decrypt_blocks(&mut blocks);
-
-    let mut result: Vec<u8> = blocks.iter().flat_map(|b| b.iter().copied()).collect();
+    let mut result = Vec::with_capacity(bytes.len());
+    for chunk in bytes.chunks_exact(16) {
+        let mut block = aes::cipher::generic_array::GenericArray::from([0u8; 16]);
+        block.copy_from_slice(chunk);
+        cipher.decrypt_block(&mut block);
+        result.extend_from_slice(&block);
+    }
 
     if let Some(&pad_len) = result.last() {
         let pad_len = pad_len as usize;
