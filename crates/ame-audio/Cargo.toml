@@ -1,0 +1,10 @@
+[package]
+name = "ame-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ame-core = { path = "../ame-core" }
+cpal = "0.17.1"
+symphonia = { version = "0.5.5", features = ["flac", "mp3"] }

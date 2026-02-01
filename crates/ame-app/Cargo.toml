@@ -1,0 +1,15 @@
+[package]
+name = "ame"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ame"
+path = "src/main.rs"
+
+[dependencies]
+ame-core = { path = "../ame-core" }
+ame-audio = { path = "../ame-audio" }
+gpui = "0.2.2"
+tracing = { workspace = true }
