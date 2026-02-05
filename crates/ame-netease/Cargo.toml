@@ -2,8 +2,8 @@
 name = "ame-netease"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 authors.workspace = true
+license.workspace = true
 
 [dependencies]
 aes = "0.8.4"
@@ -17,5 +17,5 @@ reqwest = { version = "0.13.1", features = ["form", "json"] }
 rsa = "0.9.10"
 serde = "1.0.228"
 serde_json = "1.0.149"
-thiserror = { workspace = true }
-tokio = { workspace = true }
+thiserror.workspace = true
+tokio.workspace = true

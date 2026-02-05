@@ -5,9 +5,9 @@ resolver = "3"
 [workspace.package]
 version = "0.0.5"
 edition = "2024"
-license = "MPL-2.0"
-description = "Third-party ncm client."
 authors = ["Yamrc <yamrci@outlook.com>"]
+description = "Third-party ncm client."
+license = "MPL-2.0"
 
 [profile.dev]
 incremental = true

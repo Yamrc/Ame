@@ -2,8 +2,12 @@
 name = "ame-core"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 
 [dependencies]
-tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.22", features = ["env-filter", "local-time"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3.22", features = [
+    "env-filter",
+    "local-time",
+] }

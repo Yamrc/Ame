@@ -2,6 +2,7 @@
 name = "ame-audio"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 
 [dependencies]
@@ -14,5 +15,5 @@ symphonia = { version = "0.5.5", default-features = false, features = [
 ] }
 rubato = "1.0.1"
 ringbuf = "0.4.8"
-tracing = { workspace = true }
-thiserror = { workspace = true }
+tracing.workspace = true
+thiserror.workspace = true
