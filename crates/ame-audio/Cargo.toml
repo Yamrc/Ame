@@ -6,5 +6,13 @@ license.workspace = true
 
 [dependencies]
 ame-core = { path = "../ame-core" }
+audioadapter-buffers = "2.0.0"
 cpal = "0.17.1"
-symphonia = { version = "0.5.5", features = ["flac", "mp3"] }
+symphonia = { version = "0.5.5", default-features = false, features = [
+    "flac",
+    "mp3",
+] }
+rubato = "1.0.1"
+ringbuf = "0.4.8"
+tracing = { workspace = true }
+thiserror = { workspace = true }
