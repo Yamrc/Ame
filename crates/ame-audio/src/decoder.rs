@@ -1,12 +1,17 @@
-use ringbuf::HeapRb;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 use ringbuf::traits::Producer;
+use ringbuf::HeapRb;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
+use symphonia::core::units::Time;
 use symphonia::default::{get_codecs, get_probe};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::Result;
 
@@ -21,13 +26,35 @@ impl Decoder {
         output_sample_rate: u32,
         ring_prod: <RingBuf as ringbuf::traits::Split>::Prod,
     ) -> std::thread::JoinHandle<Result<()>> {
-        std::thread::spawn(move || Self::decode_loop(source, output_sample_rate, ring_prod))
+        std::thread::spawn(move || {
+            Self::decode_loop(source, output_sample_rate, ring_prod, None, None)
+        })
+    }
+
+    pub fn spawn_at(
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        output_sample_rate: u32,
+        ring_prod: <RingBuf as ringbuf::traits::Split>::Prod,
+        position: Duration,
+        position_tracker: Option<Arc<AtomicU64>>,
+    ) -> std::thread::JoinHandle<Result<()>> {
+        std::thread::spawn(move || {
+            Self::decode_loop(
+                source,
+                output_sample_rate,
+                ring_prod,
+                Some(position),
+                position_tracker,
+            )
+        })
     }
 
     fn decode_loop(
         source: Box<dyn symphonia::core::io::MediaSource>,
         output_sample_rate: u32,
         mut prod: <RingBuf as ringbuf::traits::Split>::Prod,
+        start_position: Option<Duration>,
+        position_tracker: Option<Arc<AtomicU64>>,
     ) -> Result<()> {
         info!(
             "Decoder started, output sample rate: {} Hz",
@@ -48,6 +75,7 @@ impl Decoder {
         let track = format
             .default_track()
             .ok_or(crate::AudioError::UnsupportedFormat)?;
+        let track_id = track.id;
         let codec_params = &track.codec_params;
 
         debug!(
@@ -67,6 +95,27 @@ impl Decoder {
             .ok_or(crate::AudioError::UnsupportedFormat)?
             .count();
 
+        // Handle seek to start position
+        if let Some(pos) = start_position {
+            if pos > Duration::ZERO {
+                let seconds = pos.as_secs();
+                let frac = pos.subsec_nanos() as f64 / 1_000_000_000.0;
+                let time = Time::new(seconds, frac);
+
+                debug!("Seeking to: {:?}", pos);
+                match format.seek(
+                    SeekMode::Accurate,
+                    SeekTo::Time {
+                        time,
+                        track_id: Some(track_id),
+                    },
+                ) {
+                    Ok(_) => info!("Seek successful to {:?}", pos),
+                    Err(e) => warn!("Seek failed: {}, continuing from start", e),
+                }
+            }
+        }
+
         let need_resample = src_rate != output_sample_rate;
         info!(
             "Audio format: {} Hz, {} channels, resample needed: {}",
@@ -77,6 +126,7 @@ impl Decoder {
             need_resample.then(|| create_resampler(src_rate, output_sample_rate, channels));
 
         let mut in_buf: Vec<Sample> = Vec::with_capacity(8192);
+        let mut total_samples_decoded: u64 = 0;
 
         loop {
             use symphonia::core::errors::Error as SymphError;
@@ -89,10 +139,18 @@ impl Decoder {
             };
 
             if let Ok(audio_buf) = decoder.decode(&packet) {
-                let mut sample_buf =
-                    SampleBuffer::<Sample>::new(audio_buf.frames() as u64, *audio_buf.spec());
+                let frames = audio_buf.frames();
+                let mut sample_buf = SampleBuffer::<Sample>::new(frames as u64, *audio_buf.spec());
                 sample_buf.copy_interleaved_ref(audio_buf);
                 in_buf.extend_from_slice(sample_buf.samples());
+
+                // Update position tracker
+                total_samples_decoded += frames as u64;
+                if let Some(ref tracker) = position_tracker {
+                    let current_ms = start_position.map_or(0, |p| p.as_millis() as u64)
+                        + (total_samples_decoded * 1000 / src_rate as u64);
+                    tracker.store(current_ms, Ordering::Relaxed);
+                }
 
                 if let Some(ref mut r) = resampler {
                     process_resampling(r.as_mut(), &mut in_buf, channels, &mut prod)?;
