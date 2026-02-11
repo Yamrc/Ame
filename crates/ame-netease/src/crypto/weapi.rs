@@ -16,7 +16,7 @@ pub struct Payload {
 }
 
 pub fn encrypt(text: &str) -> Payload {
-    use rand::Rng;
+    use rand::RngExt;
     let mut rng = rand::rng();
     let secret_key: Vec<u8> = (0..16).map(|_| BASE62[rng.random_range(0..62)]).collect();
     encrypt_with_key(text, &secret_key)
