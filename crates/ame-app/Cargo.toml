@@ -15,3 +15,4 @@ ame-core = { path = "../ame-core" }
 ame-audio = { path = "../ame-audio" }
 gpui = "0.2.2"
 tracing.workspace = true
+gpui-animation = "0.2.4"

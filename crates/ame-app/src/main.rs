@@ -1,7 +1,8 @@
 use ame_core::init_logger;
+use gpui::Application;
 
 fn main() {
     init_logger();
 
-    tracing::info!("Starting AME application...");
+    Application::new().run(|_| tracing::info!("AME running."));
 }

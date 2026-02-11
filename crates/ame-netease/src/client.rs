@@ -5,7 +5,7 @@ use serde_json::Value;
 
 const EAPI_BASE: &str = "https://interface.music.163.com/eapi";
 const WEAPI_BASE: &str = "https://music.163.com/weapi";
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.0.18.203152";
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.28.205001";
 const REFERER: &str = "https://music.163.com";
 
 pub struct NeteaseClient {

@@ -3,7 +3,7 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.package]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 authors = ["Yamrc <yamrci@outlook.com>"]
 description = "Third-party ncm client."
@@ -19,6 +19,7 @@ panic = "abort"
 strip = true
 
 [workspace.dependencies]
+anyhow = "1.0.101"
 tracing = "0.1.44"
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["full"] }

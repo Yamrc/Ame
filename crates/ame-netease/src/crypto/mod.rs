@@ -2,7 +2,7 @@ pub mod eapi;
 pub mod weapi;
 
 pub use eapi::{decrypt as eapi_decrypt, encrypt as eapi_encrypt};
-pub use weapi::{encrypt as weapi_encrypt, Payload as WeapiPayload};
+pub use weapi::{Payload as WeapiPayload, encrypt as weapi_encrypt};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
