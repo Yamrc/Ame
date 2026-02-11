@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+souvlaki = { version = "0.8.3", default-features = false, features = [
+    "use_zbus",
+] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.22", features = [
     "env-filter",

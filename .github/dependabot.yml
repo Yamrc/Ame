@@ -1,10 +1,17 @@
 version: 2
 updates:
   - package-ecosystem: "cargo"
-    assignees:
-      - "Yamrc"
+    assignees: ["Yamrc"]
     directory: "/"
     schedule:
       interval: "daily"
     pull-request-branch-name:
       separator: "-"
+    groups:
+      minor-updates:
+        update-types:
+          - "minor"
+          - "patch"
+      major-updates:
+        update-types:
+          - "major"
