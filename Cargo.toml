@@ -19,7 +19,7 @@ panic = "abort"
 strip = true
 
 [workspace.dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 tracing = "0.1.44"
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["full"] }
