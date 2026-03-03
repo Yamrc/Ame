@@ -20,6 +20,33 @@ strip = true
 
 [workspace.dependencies]
 anyhow = "1.0.101"
+aes = "0.8.4"
+audioadapter-buffers = "2.0.0"
+base64 = "0.22.1"
+cbc = "0.1.2"
+cpal = "0.17.1"
+dirs = "6.0.0"
+gpui = "0.2.2"
+gpui-animation = "0.2.4"
+gpui-tray.git = "https://github.com/Yamrc/gpui-tray.git"
+hex = "0.4.3"
+keyring = "3.6.3"
+symphonia = { version = "0.5.5", default-features = false }
+souvlaki = { version = "0.8.3", default-features = false }
+sled = "0.34.7"
+md-5 = "0.10.6"
+num-bigint = "0.4.6"
+rand = "0.10.0"
+reqwest = "0.13.1"
+rsa = "0.9.10"
+serde = "1.0.228"
+serde_json = "1.0.149"
+rubato = "1.0.1"
+ringbuf = "0.4.8"
 tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = [
+    "env-filter",
+    "local-time",
+] }
 thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["full"] }

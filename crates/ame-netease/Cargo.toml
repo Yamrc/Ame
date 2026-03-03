@@ -6,16 +6,16 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-aes = "0.8.4"
-base64 = "0.22.1"
-cbc = "0.1.2"
-hex = "0.4.3"
-md-5 = "0.10.6"
-num-bigint = "0.4.6"
-rand = "0.10.0"
-reqwest = { version = "0.13.1", features = ["form", "json"] }
-rsa = "0.9.10"
-serde = "1.0.228"
-serde_json = "1.0.149"
+aes.workspace = true
+base64.workspace = true
+cbc.workspace = true
+hex.workspace = true
+md-5.workspace = true
+num-bigint.workspace = true
+rand.workspace = true
+reqwest = { workspace = true, features = ["form", "json"] }
+rsa.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
