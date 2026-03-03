@@ -15,5 +15,6 @@ symphonia = { workspace = true, features = [
 ] }
 rubato.workspace = true
 ringbuf.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
 tracing.workspace = true
 thiserror.workspace = true

@@ -1,12 +1,13 @@
 use crate::crypto::{eapi, weapi};
+use crate::api::request::ApiRequest;
 use reqwest::Client;
-use serde::de::DeserializeOwned;
-use serde_json::Value;
+use std::time::Duration;
 
 const EAPI_BASE: &str = "https://interface.music.163.com/eapi";
 const WEAPI_BASE: &str = "https://music.163.com/weapi";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.28.205001";
 const REFERER: &str = "https://music.163.com";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub struct NeteaseClient {
     client: Client,
@@ -28,17 +29,17 @@ impl NeteaseClient {
         }
     }
 
-    pub async fn eapi_request<T: DeserializeOwned>(
-        &self,
-        endpoint: &str,
-        params: Value,
-    ) -> Result<T, Error> {
-        let url = format!("{}{}", EAPI_BASE, endpoint);
-        let encrypted = eapi::encrypt(endpoint, &params.to_string());
+    pub async fn eapi_request<R: ApiRequest>(&self, req: R) -> Result<R::Response, Error> {
+        let endpoint = req.endpoint();
+        let route = strip_api_prefix(endpoint);
+        let params = req.payload();
+        let url = format!("{}{}", EAPI_BASE, route);
+        let encrypted = eapi::encrypt(&eapi_encrypt_path(endpoint), &params.to_string());
 
         let resp: reqwest::Response = self
             .client
             .post(&url)
+            .timeout(REQUEST_TIMEOUT)
             .header("User-Agent", USER_AGENT)
             .header("Referer", REFERER)
             .header("Origin", REFERER)
@@ -65,17 +66,17 @@ impl NeteaseClient {
         Ok(serde_json::from_str(&text)?)
     }
 
-    pub async fn weapi_request<T: DeserializeOwned>(
-        &self,
-        endpoint: &str,
-        params: Value,
-    ) -> Result<T, Error> {
-        let url = format!("{}{}", WEAPI_BASE, endpoint);
+    pub async fn weapi_request<R: ApiRequest>(&self, req: R) -> Result<R::Response, Error> {
+        let endpoint = req.endpoint();
+        let route = strip_api_prefix(endpoint);
+        let params = req.payload();
+        let url = format!("{}{}", WEAPI_BASE, route);
         let payload = weapi::encrypt(&params.to_string());
 
         let resp: reqwest::Response = self
             .client
             .post(&url)
+            .timeout(REQUEST_TIMEOUT)
             .header("User-Agent", USER_AGENT)
             .header("Referer", REFERER)
             .header("Origin", REFERER)
@@ -97,6 +98,18 @@ impl NeteaseClient {
         }
 
         Ok(serde_json::from_str(&text)?)
+    }
+}
+
+fn strip_api_prefix(endpoint: &str) -> &str {
+    endpoint.strip_prefix("/api").unwrap_or(endpoint)
+}
+
+fn eapi_encrypt_path(endpoint: &str) -> String {
+    if endpoint.starts_with("/api/") {
+        endpoint.to_string()
+    } else {
+        format!("/api{}", endpoint)
     }
 }
 

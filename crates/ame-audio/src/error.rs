@@ -16,6 +16,8 @@ pub enum AudioError {
     Decode(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Request error: {0}")]
+    Reqwest(#[from] reqwest::Error),
     #[error("Unsupported format")]
     UnsupportedFormat,
 }

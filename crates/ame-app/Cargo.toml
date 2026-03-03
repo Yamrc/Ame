@@ -13,7 +13,11 @@ path = "src/main.rs"
 [dependencies]
 ame-core = { path = "../ame-core" }
 ame-audio = { path = "../ame-audio" }
+ame-netease = { path = "../ame-netease" }
+anyhow.workspace = true
 gpui.workspace = true
 gpui-animation.workspace = true
 gpui-tray.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 tracing.workspace = true

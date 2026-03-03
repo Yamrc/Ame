@@ -1,16 +1,16 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use cpal::{Device, StreamConfig};
-use ringbuf::traits::Split;
 use ringbuf::HeapRb;
+use ringbuf::traits::Split;
 use tracing::{debug, info, warn};
 
-use crate::decoder::{Decoder, Sample};
-use crate::output::{default_config, default_device, OutputStream};
-use crate::source::{FileSource, Source};
 use crate::Result;
+use crate::decoder::{Decoder, Sample};
+use crate::output::{OutputStream, default_config, default_device};
+use crate::source::{FileSource, NetworkSource, Source};
 
 pub struct AudioEngine {
     device: Device,
@@ -124,6 +124,11 @@ impl AudioEngine {
         info!("Playback started");
 
         Ok(())
+    }
+
+    pub fn play_url(&mut self, url: impl Into<String>) -> Result<()> {
+        let source = NetworkSource::from_http(url.into())?;
+        self.play(Box::new(source))
     }
 
     pub fn pause(&self) {

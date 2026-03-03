@@ -1,9 +1,9 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use ringbuf::traits::Producer;
 use ringbuf::HeapRb;
+use ringbuf::traits::Producer;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
@@ -183,14 +183,14 @@ fn create_resampler(
 
     let params = SincInterpolationParameters {
         sinc_len: 64,
-        f_cutoff: 0.95,
+        f_cutoff: 0.88,
         interpolation: SincInterpolationType::Linear,
         oversampling_factor: 128,
         window: WindowFunction::BlackmanHarris2,
     };
 
     Box::new(
-        Async::<Sample>::new_sinc(ratio, 1.1, &params, 1024, channels, FixedAsync::Input)
+        Async::<Sample>::new_sinc(ratio, 1.0, &params, 1024, channels, FixedAsync::Input)
             .expect("valid resampler params"),
     )
 }

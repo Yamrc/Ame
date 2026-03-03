@@ -88,9 +88,13 @@ version = "0.0.6"
 dependencies = [
  "ame-audio",
  "ame-core",
+ "ame-netease",
+ "anyhow",
  "gpui",
  "gpui-animation",
  "gpui-tray",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 
@@ -101,6 +105,7 @@ dependencies = [
  "ame-core",
  "audioadapter-buffers",
  "cpal",
+ "reqwest",
  "ringbuf",
  "rubato",
  "symphonia",
@@ -114,8 +119,11 @@ version = "0.0.6"
 dependencies = [
  "anyhow",
  "keyring",
+ "serde",
+ "serde_json",
  "sled",
  "souvlaki",
+ "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1504,27 +1512,6 @@ name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
-
-[[package]]
-name = "dbus"
-version = "0.9.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21b3aa68d7e7abee336255bd7248ea965cc393f3e70411135a6f6a4b651345d4"
-dependencies = [
- "libc",
- "libdbus-sys",
- "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "dbus-secret-service"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "708b509edf7889e53d7efb0ffadd994cc6c2345ccb62f55cfd6b0682165e4fa6"
-dependencies = [
- "dbus",
- "zeroize",
-]
 
 [[package]]
 name = "deflate64"
@@ -3275,10 +3262,7 @@ version = "3.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
 dependencies = [
- "byteorder",
- "dbus-secret-service",
  "log",
- "windows-sys 0.60.2",
  "zeroize",
 ]
 
@@ -3353,15 +3337,6 @@ name = "libc"
 version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
-
-[[package]]
-name = "libdbus-sys"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "328c4789d42200f1eeec05bd86c9c13c7f091d2ba9a6ea35acdf51f31bc0f043"
-dependencies = [
- "pkg-config",
-]
 
 [[package]]
 name = "libfuzzer-sys"
@@ -5078,7 +5053,9 @@ dependencies = [
  "base64",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "h2",
  "http",
  "http-body",

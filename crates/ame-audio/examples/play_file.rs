@@ -4,9 +4,12 @@ use std::thread;
 use std::time::Duration;
 
 use ame_audio::{AudioEngine, FileSource, Source};
+use ame_core::init_logger;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args().nth(1).expect("Usage: play_file <path>");
+
+    init_logger();
 
     let mut engine = AudioEngine::new()?;
     let source = FileSource::new(&path)?;

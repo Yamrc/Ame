@@ -74,16 +74,16 @@ impl Source for FileSource {
 }
 
 pub struct NetworkSource {
-    reader: Box<dyn Read + Send + Sync>,
+    reader: std::sync::Mutex<Box<dyn Read + Send>>,
     url: String,
     supports_range: bool,
     current_pos: Duration,
 }
 
 impl NetworkSource {
-    pub fn new(reader: Box<dyn Read + Send + Sync>) -> Self {
+    pub fn new(reader: Box<dyn Read + Send>) -> Self {
         Self {
-            reader,
+            reader: std::sync::Mutex::new(reader),
             url: String::new(),
             supports_range: false,
             current_pos: Duration::ZERO,
@@ -91,12 +91,12 @@ impl NetworkSource {
     }
 
     pub fn with_url(
-        reader: Box<dyn Read + Send + Sync>,
+        reader: Box<dyn Read + Send>,
         url: String,
         supports_range: bool,
     ) -> Self {
         Self {
-            reader,
+            reader: std::sync::Mutex::new(reader),
             url,
             supports_range,
             current_pos: Duration::ZERO,
@@ -105,6 +105,35 @@ impl NetworkSource {
 
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    pub fn from_http(url: impl Into<String>) -> crate::Result<Self> {
+        let url = url.into();
+        let client = reqwest::blocking::Client::new();
+
+        let supports_range = client
+            .head(&url)
+            .send()
+            .ok()
+            .and_then(|resp| {
+                resp.headers()
+                    .get(reqwest::header::ACCEPT_RANGES)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|v| v.eq_ignore_ascii_case("bytes"))
+            })
+            .unwrap_or(false);
+
+        let resp = client
+            .get(&url)
+            .send()
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+
+        Ok(Self {
+            reader: std::sync::Mutex::new(Box::new(resp)),
+            url,
+            supports_range,
+            current_pos: Duration::ZERO,
+        })
     }
 }
 
@@ -137,7 +166,11 @@ fn probe_duration(path: &str) -> Option<Duration> {
 
 impl Read for NetworkSource {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.reader.read(buf)
+        let mut reader = self
+            .reader
+            .lock()
+            .map_err(|_| std::io::Error::other("network reader lock poisoned"))?;
+        reader.read(buf)
     }
 }
 
