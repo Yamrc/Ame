@@ -21,7 +21,7 @@ pub fn fetch_track_url_blocking(track_id: i64, cookie: Option<&str>) -> Result<S
         .filter(|cookie| !cookie.trim().is_empty())
         .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
     let response: serde_json::Value =
-        block_on(client.eapi_request(TrackUrlRequest::new(vec![track_id])))?;
+        block_on(client.eapi_request(TrackUrlRequest::with_level(vec![track_id], "jymaster".to_string())))?;
 
     response["data"]
         .as_array()
