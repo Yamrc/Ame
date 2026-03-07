@@ -57,4 +57,4 @@ tracing-subscriber = { version = "0.3.22", features = [
     "local-time",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["full"] }
