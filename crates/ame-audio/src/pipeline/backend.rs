@@ -2,8 +2,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 
+#[cfg(target_os = "windows")]
+use cpal::HostId;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, HostId, SampleFormat, Stream, StreamConfig};
+use cpal::{Device, SampleFormat, Stream, StreamConfig};
 use ringbuf::traits::{Consumer, Split};
 
 use crate::error::{AudioError, Result};
@@ -19,6 +21,7 @@ pub struct AudioDevice {
 }
 
 pub struct OpenStreamRequest {
+    pub stream_id: u64,
     pub preferred_device: Option<String>,
     pub volume: f32,
     pub consumer: RingConsumer,
@@ -27,7 +30,7 @@ pub struct OpenStreamRequest {
 
 #[derive(Debug, Clone)]
 pub enum BackendNotification {
-    StreamError(String),
+    StreamError { stream_id: u64, reason: String },
 }
 
 pub trait OutputSession: Send {
@@ -142,17 +145,33 @@ impl OutputBackend for CpalBackend {
         let volume = Arc::new(AtomicU32::new(request.volume.clamp(0.0, 1.0).to_bits()));
         let volume_clone = Arc::clone(&volume);
         let tx = request.event_tx;
+        let stream_id = request.stream_id;
 
         let stream = match sample_format {
-            SampleFormat::F32 => {
-                build_output_stream::<f32>(&device, &config, request.consumer, volume_clone, tx)?
-            }
-            SampleFormat::I16 => {
-                build_output_stream::<i16>(&device, &config, request.consumer, volume_clone, tx)?
-            }
-            SampleFormat::U16 => {
-                build_output_stream::<u16>(&device, &config, request.consumer, volume_clone, tx)?
-            }
+            SampleFormat::F32 => build_output_stream::<f32>(
+                &device,
+                &config,
+                request.consumer,
+                volume_clone,
+                tx,
+                stream_id,
+            )?,
+            SampleFormat::I16 => build_output_stream::<i16>(
+                &device,
+                &config,
+                request.consumer,
+                volume_clone,
+                tx,
+                stream_id,
+            )?,
+            SampleFormat::U16 => build_output_stream::<u16>(
+                &device,
+                &config,
+                request.consumer,
+                volume_clone,
+                tx,
+                stream_id,
+            )?,
             _ => {
                 return Err(AudioError::OutputInitFailed {
                     reason: format!("unsupported output sample format: {sample_format:?}"),
@@ -176,6 +195,7 @@ fn build_output_stream<T>(
     mut consumer: RingConsumer,
     volume: Arc<AtomicU32>,
     event_tx: Sender<BackendNotification>,
+    stream_id: u64,
 ) -> Result<Stream>
 where
     T: cpal::SizedSample + cpal::FromSample<Sample>,
@@ -190,7 +210,10 @@ where
             }
         },
         move |err| {
-            let _ = event_tx.send(BackendNotification::StreamError(err.to_string()));
+            let _ = event_tx.send(BackendNotification::StreamError {
+                stream_id,
+                reason: err.to_string(),
+            });
         },
         None,
     )?;

@@ -36,6 +36,7 @@ pub(crate) struct AudioRuntime {
     decoder_notify_rx: mpsc::Receiver<DecoderNotification>,
     backend_notify_tx: mpsc::Sender<BackendNotification>,
     backend_notify_rx: mpsc::Receiver<BackendNotification>,
+    next_stream_id: u64,
 }
 
 struct PlaybackPipeline {
@@ -44,6 +45,7 @@ struct PlaybackPipeline {
     output: Box<dyn OutputSession>,
     backend: OutputBackendKind,
     device_name: String,
+    stream_id: u64,
 }
 
 impl PlaybackPipeline {
@@ -87,6 +89,7 @@ impl AudioRuntime {
             decoder_notify_rx,
             backend_notify_tx,
             backend_notify_rx,
+            next_stream_id: 1,
         })
     }
 
@@ -164,12 +167,16 @@ impl AudioRuntime {
         self.transition_to(EngineState::Loading)?;
         self.stop_playback();
 
+        let stream_id = self.next_stream_id;
+        self.next_stream_id = self.next_stream_id.wrapping_add(1);
+
         let backend = backend_for_kind(self.config.backend)?;
         let ring_capacity = 48_000 * 2 * 2;
         let ring = SampleRing::new(ring_capacity);
         let (producer, consumer) = ring.split();
 
         let output = backend.open_stream(OpenStreamRequest {
+            stream_id,
             preferred_device: self.config.preferred_device.clone(),
             volume: self.config.volume,
             consumer,
@@ -205,6 +212,7 @@ impl AudioRuntime {
             output,
             backend: self.config.backend,
             device_name: device_name.clone(),
+            stream_id,
         });
         self.current_source = Some(source);
         self.position_base_ms = start_ms;
@@ -364,13 +372,24 @@ impl AudioRuntime {
     fn drain_backend_notifications(&mut self) {
         loop {
             match self.backend_notify_rx.try_recv() {
-                Ok(BackendNotification::StreamError(reason)) => {
-                    let backend = self
-                        .playback
-                        .as_ref()
-                        .map(|p| p.backend)
-                        .unwrap_or(self.config.backend);
-                    let device = self.playback.as_ref().map(|p| p.device_name.clone());
+                Ok(BackendNotification::StreamError { stream_id, reason }) => {
+                    let Some(playback) = self.playback.as_ref() else {
+                        continue;
+                    };
+                    if playback.stream_id != stream_id {
+                        continue;
+                    }
+
+                    if self.state != EngineState::Playing {
+                        warn!(
+                            "ignore backend stream error while state={:?}: {}",
+                            self.state, reason
+                        );
+                        continue;
+                    }
+
+                    let backend = playback.backend;
+                    let device = Some(playback.device_name.clone());
                     self.event_hub
                         .publish(AudioEvent::DeviceLost { backend, device });
                     if let Err(err) = self.recover_from_device_loss(reason) {
