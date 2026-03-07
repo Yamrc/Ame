@@ -15,10 +15,10 @@ impl TrackUrlRequest {
         }
     }
 
-    pub fn with_level(ids: Vec<i64>, level: impl Into<String>) -> Self {
+    pub fn with_level(ids: Vec<i64>, level: String) -> Self {
         Self {
             ids,
-            level: level.into(),
+            level,
         }
     }
 }
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn sky_level_sets_immerse_type() {
-        let req = TrackUrlRequest::with_level(vec![409926], "sky");
+        let req = TrackUrlRequest::with_level(vec![409926], "sky".to_string());
         let payload = req.payload();
         assert_eq!(payload["immerseType"].as_str(), Some("c51"));
     }

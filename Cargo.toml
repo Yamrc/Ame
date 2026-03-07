@@ -1,6 +1,11 @@
 [workspace]
-members = ["crates/*"]
-resolver = "3"
+members = [
+    "crates/ame-audio",
+    "crates/ame-core",
+    "crates/ame-desktop",
+    "crates/ame-netease",
+]
+resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
