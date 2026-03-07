@@ -1,0 +1,82 @@
+name: Check and Build
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  LINUX_PACKAGES: pkg-config libdbus-1-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
+
+jobs:
+  lint:
+    name: Check And Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
+        with:
+          with-clippy: "true"
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: Cargo check and clippy
+        run: |
+          cargo check -q --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
+
+  build:
+    name: Build ${{ matrix.os }}
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_suffix: linux-x86_64
+            bin_name: ame
+          - os: windows-latest
+            artifact_suffix: windows-x86_64
+            bin_name: ame.exe
+          - os: macos-latest
+            artifact_suffix: macos-arm64
+            bin_name: ame
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
+        with:
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: Cargo build release
+        run: cargo build -q --release -p ame
+
+      - name: Prepare raw binary and SHA1
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $artifactName = "ame-${{ matrix.artifact_suffix }}"
+          Copy-Item "target/release/${{ matrix.bin_name }}" "dist/$artifactName"
+          $hash = (Get-FileHash -Path "dist/$artifactName" -Algorithm SHA1).Hash.ToLower()
+          "$hash  $artifactName" | Out-File -FilePath "dist/$artifactName.sha1" -Encoding ascii
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ame-${{ matrix.artifact_suffix }}
+          path: |
+            dist/ame-${{ matrix.artifact_suffix }}
+            dist/ame-${{ matrix.artifact_suffix }}.sha1
+          if-no-files-found: error

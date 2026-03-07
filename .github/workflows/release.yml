@@ -1,0 +1,152 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (example: v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  LINUX_PACKAGES: pkg-config libdbus-1-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  lint:
+    name: Check And Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
+        with:
+          with-clippy: "true"
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: Cargo check and clippy
+        run: |
+          cargo check -q --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
+
+  build:
+    name: Build ${{ matrix.os }}
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_suffix: linux-x86_64
+            bin_name: ame
+          - os: windows-latest
+            artifact_suffix: windows-x86_64
+            bin_name: ame.exe
+          - os: macos-latest
+            artifact_suffix: macos-arm64
+            bin_name: ame
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
+        with:
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: Cargo build release
+        run: cargo build -q --release -p ame
+
+      - name: Prepare raw binary and SHA1
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $artifactName = "ame-${{ matrix.artifact_suffix }}"
+          Copy-Item "target/release/${{ matrix.bin_name }}" "dist/$artifactName"
+          $hash = (Get-FileHash -Path "dist/$artifactName" -Algorithm SHA1).Hash.ToLower()
+          "$hash  $artifactName" | Out-File -FilePath "dist/$artifactName.sha1" -Encoding ascii
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ame-${{ matrix.artifact_suffix }}
+          path: |
+            dist/ame-${{ matrix.artifact_suffix }}
+            dist/ame-${{ matrix.artifact_suffix }}.sha1
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ame-*
+          path: dist
+          merge-multiple: true
+
+      - name: Get previous tag
+        id: previous_tag
+        uses: WyriHaximus/github-action-get-previous-tag@v1
+        with:
+          fallback: ""
+
+      - name: Generate release notes
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          mode: COMMIT
+          toTag: ${{ env.RELEASE_TAG }}
+          fromTag: ${{ steps.previous_tag.outputs.tag }}
+          configurationJson: |
+            {
+              "template": "## What's Changed\n#{{CHANGELOG}}\n\n**Full Changelog**: #{{RELEASE_DIFF}}",
+              "empty_template": "No significant changes.",
+              "commit_template": "- #{{TITLE}} (#{{HASH}}) @#{{AUTHOR}}",
+              "sort": {
+                "order": "DESC",
+                "on_property": "mergedAt"
+              }
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Filter dependabot commits from release notes
+        shell: bash
+        env:
+          CHANGELOG_BODY: ${{ steps.changelog.outputs.changelog }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$CHANGELOG_BODY" \
+            | grep -Eiv '([0-9]+\+)?dependabot\[bot\]@users\.noreply\.github\.com' \
+            > release-notes.md || true
+          if [ ! -s release-notes.md ]; then
+            echo "No significant changes." > release-notes.md
+          fi
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md
+          files: dist/*
