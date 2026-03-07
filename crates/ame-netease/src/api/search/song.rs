@@ -61,6 +61,6 @@ mod tests {
         assert_eq!(response["code"].as_i64(), Some(200));
         assert!(response["result"]["songs"].is_array());
 
-        println!("{:?}", response["result"]);
+        // println!("{:?}", response["result"]);
     }
 }

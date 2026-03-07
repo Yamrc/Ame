@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlaybackMode {
     Sequence,
     SingleRepeat,
@@ -9,6 +11,8 @@ pub enum PlaybackMode {
 pub struct QueueItem {
     pub id: i64,
     pub name: String,
+    pub artist: String,
+    pub cover_url: Option<String>,
     pub source_url: Option<String>,
 }
 
@@ -17,6 +21,10 @@ pub struct PlayerEntity {
     pub mode: PlaybackMode,
     pub queue: Vec<QueueItem>,
     pub current_index: Option<usize>,
+    pub is_playing: bool,
+    pub volume: f32,
+    pub position_ms: u64,
+    pub duration_ms: u64,
     shuffle_seed: u64,
 }
 
@@ -26,12 +34,23 @@ impl Default for PlayerEntity {
             mode: PlaybackMode::Sequence,
             queue: Vec::new(),
             current_index: None,
+            is_playing: false,
+            volume: 0.7,
+            position_ms: 0,
+            duration_ms: 180_000,
             shuffle_seed: 0x9E37_79B9_7F4A_7C15,
         }
     }
 }
 
 impl PlayerEntity {
+    pub fn apply_audio_snapshot(&mut self, snapshot: &ame_audio::AudioSnapshot) {
+        self.is_playing = snapshot.is_playing;
+        self.volume = snapshot.volume.clamp(0.0, 1.0);
+        self.position_ms = snapshot.position_ms;
+        self.duration_ms = snapshot.duration_ms;
+    }
+
     pub fn enqueue(&mut self, item: QueueItem) {
         self.queue.push(item);
         if self.current_index.is_none() {
@@ -44,8 +63,27 @@ impl PlayerEntity {
         self.current_index = None;
     }
 
-    pub fn set_mode(&mut self, mode: PlaybackMode) {
-        self.mode = mode;
+    pub fn cycle_mode(&mut self) {
+        self.mode = match self.mode {
+            PlaybackMode::Sequence => PlaybackMode::SingleRepeat,
+            PlaybackMode::SingleRepeat => PlaybackMode::Shuffle,
+            PlaybackMode::Shuffle => PlaybackMode::Sequence,
+        };
+    }
+
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume.clamp(0., 1.);
+    }
+
+    pub fn current_item(&self) -> Option<&QueueItem> {
+        self.current_index.and_then(|index| self.queue.get(index))
+    }
+
+    pub fn progress_ratio(&self) -> f32 {
+        if self.duration_ms == 0 {
+            return 0.;
+        }
+        (self.position_ms as f32 / self.duration_ms as f32).clamp(0., 1.)
     }
 
     pub fn next_index(&mut self) -> Option<usize> {
@@ -81,7 +119,11 @@ impl PlayerEntity {
         let prev = match self.mode {
             PlaybackMode::SingleRepeat => current.min(len - 1),
             PlaybackMode::Sequence | PlaybackMode::Shuffle => {
-                if current == 0 { len - 1 } else { current - 1 }
+                if current == 0 {
+                    len - 1
+                } else {
+                    current - 1
+                }
             }
         };
         self.current_index = Some(prev);
@@ -114,16 +156,22 @@ mod tests {
         p.enqueue(QueueItem {
             id: 1,
             name: "A".into(),
+            artist: "Artist A".into(),
+            cover_url: None,
             source_url: None,
         });
         p.enqueue(QueueItem {
             id: 2,
             name: "B".into(),
+            artist: "Artist B".into(),
+            cover_url: None,
             source_url: None,
         });
         p.enqueue(QueueItem {
             id: 3,
             name: "C".into(),
+            artist: "Artist C".into(),
+            cover_url: None,
             source_url: None,
         });
         p
@@ -140,7 +188,7 @@ mod tests {
     fn single_repeat_sticks() {
         let mut p = build_player();
         p.current_index = Some(1);
-        p.set_mode(PlaybackMode::SingleRepeat);
+        p.mode = PlaybackMode::SingleRepeat;
         assert_eq!(p.next_index(), Some(1));
         assert_eq!(p.prev_index(), Some(1));
     }
@@ -149,8 +197,20 @@ mod tests {
     fn shuffle_moves_when_possible() {
         let mut p = build_player();
         p.current_index = Some(1);
-        p.set_mode(PlaybackMode::Shuffle);
+        p.mode = PlaybackMode::Shuffle;
         let next = p.next_index().expect("next");
         assert_ne!(next, 1);
+    }
+
+    #[test]
+    fn cycle_mode_rotates() {
+        let mut p = PlayerEntity::default();
+        assert_eq!(p.mode, PlaybackMode::Sequence);
+        p.cycle_mode();
+        assert_eq!(p.mode, PlaybackMode::SingleRepeat);
+        p.cycle_mode();
+        assert_eq!(p.mode, PlaybackMode::Shuffle);
+        p.cycle_mode();
+        assert_eq!(p.mode, PlaybackMode::Sequence);
     }
 }

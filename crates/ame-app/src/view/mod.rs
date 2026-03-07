@@ -1,5 +1,9 @@
+pub mod discover;
 pub mod home;
+pub mod library;
 pub mod login;
+pub mod next;
 pub mod playlist;
+pub mod root;
 pub mod search;
 pub mod settings;

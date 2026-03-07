@@ -5,10 +5,14 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = []
+backend-asio = ["cpal/asio"]
+
 [dependencies]
 ame-core = { path = "../ame-core" }
 audioadapter-buffers.workspace = true
-cpal.workspace = true
+cpal = { workspace = true, features = [] }
 symphonia = { workspace = true, features = [
     "flac",
     "mp3",

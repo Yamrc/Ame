@@ -77,7 +77,7 @@ mod tests {
     #[tokio::test]
     async fn live_eapi_song_url_v1_request() {
         let client = crate::NeteaseClient::new();
-        let request = TrackUrlRequest::new(vec![409926,1384286544]);
+        let request = TrackUrlRequest::new(vec![409926, 1384286544]);
         let response: serde_json::Value = client
             .eapi_request(request)
             .await
@@ -87,6 +87,9 @@ mod tests {
         assert!(response["data"].is_array());
         assert!(response["data"][0]["id"].as_i64().is_some());
 
-        println!("{:?}, {:?}", response["data"][0]["url"], response["data"][1]["url"])
+        // println!(
+        //     "{:?}, {:?}",
+        //     response["data"][0]["url"], response["data"][1]["url"]
+        // )
     }
 }

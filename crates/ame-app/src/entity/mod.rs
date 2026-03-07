@@ -1,4 +1,3 @@
 pub mod app;
-pub mod infra;
+pub mod audio_bridge;
 pub mod player;
-pub mod session;

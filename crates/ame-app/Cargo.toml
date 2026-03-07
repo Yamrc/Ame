@@ -17,7 +17,13 @@ ame-netease = { path = "../ame-netease" }
 anyhow.workspace = true
 gpui.workspace = true
 gpui-animation.workspace = true
+gpui-router.workspace = true
 gpui-tray.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+dirs.workspace = true
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+qrcode.workspace = true
 tokio.workspace = true
 tracing.workspace = true

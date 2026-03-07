@@ -1,3 +1,10 @@
-pub mod control_bar;
-pub mod queue_panel;
-pub mod search_input;
+pub mod bottom_bar;
+pub mod button;
+pub mod icon;
+pub mod input;
+pub mod nav_bar;
+pub mod scroll;
+pub mod slider;
+pub mod theme;
+pub mod title_bar;
+// pub mod virtual_list;

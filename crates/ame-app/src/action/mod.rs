@@ -1,4 +1,6 @@
+pub mod auth_actions;
+pub mod library_actions;
 pub mod player_actions;
 pub mod queue_actions;
 pub mod search_actions;
-pub mod session_actions;
+pub mod ui_actions;

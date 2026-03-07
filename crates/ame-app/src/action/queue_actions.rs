@@ -1,8 +1,4 @@
-use crate::entity::player::{PlayerEntity, QueueItem};
-
-pub fn enqueue(player: &mut PlayerEntity, item: QueueItem) {
-    player.enqueue(item);
-}
+use crate::entity::player::PlayerEntity;
 
 pub fn clear(player: &mut PlayerEntity) {
     player.clear();
