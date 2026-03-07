@@ -44,7 +44,7 @@ pub fn init(cx: &mut App) {
         ImageFormat::Png,
         include_bytes!("../../../../resouses/image/icon.jpg").to_vec(),
     );
-    let tray = Tray::new().tooltip("Ame").icon(icon).menu(|_| {
+    let tray = Tray::new().tooltip("Ame").icon(icon).menu(|| {
         vec![
             MenuItem::action("显示主窗口", TrayShowWindow),
             MenuItem::separator(),

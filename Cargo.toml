@@ -35,7 +35,7 @@ futures = "0.3.31"
 gpui = "0.2.2"
 gpui-animation = "0.2.4"
 gpui-router = "0.3.0"
-gpui-tray.git = "https://github.com/Yamrc/gpui-tray.git"
+gpui-tray = { git = "https://github.com/Yamrc/gpui-tray.git", version = "0.3.1" }
 hex = "0.4.3"
 keyring = { version = "3.6.3", features = [
     "windows-native",
@@ -44,7 +44,7 @@ keyring = { version = "3.6.3", features = [
     "crypto-rust",
 ] }
 symphonia = { version = "0.5.5", default-features = false }
-souvlaki = { version = "0.8.3", default-features = false }
+souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"]}
 redb = "2.6.3"
 md-5 = "0.10.6"
 num-bigint = "0.4.6"
