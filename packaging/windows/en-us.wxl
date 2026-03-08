@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="en-us">
+<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="en-us" Codepage="65001">
   <String Id="ProductLanguage">1033</String>
   <String Id="DowngradeErrorMessage">A newer version of Ame is already installed.</String>
 </WixLocalization>

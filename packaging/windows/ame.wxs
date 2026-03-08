@@ -4,6 +4,7 @@
     Id="*"
     Name="Ame"
     Language="!(loc.ProductLanguage)"
+    Codepage="65001"
     Version="$(var.ProductVersion)"
     Manufacturer="Yamrc"
     UpgradeCode="A5231D3F-2ED7-4E43-8F87-ECE918F16F58">

@@ -45,20 +45,14 @@ jobs:
             artifact_suffix: linux-x86_64
             bin_name: ame
             portable_name: ame-linux-x86_64
-            installer_name: ame-linux-x86_64.deb
-            installer_glob: ame-linux-x86_64.deb
           - os: windows-latest
             artifact_suffix: windows-x86_64
             bin_name: ame.exe
             portable_name: ame-windows-x86_64.exe
-            installer_name: ame-windows-x86_64-en-US.msi
-            installer_glob: ame-windows-x86_64-*.msi
           - os: macos-latest
             artifact_suffix: macos-arm64
             bin_name: ame
             portable_name: ame-macos-arm64
-            installer_name: ame-macos-arm64.pkg
-            installer_glob: ame-macos-arm64.pkg
 
     steps:
       - name: Checkout
@@ -72,68 +66,15 @@ jobs:
       - name: Cargo build release
         run: cargo build --release -p ame
 
-      - name: Resolve app version
-        shell: pwsh
-        run: |
-          $version = ((cargo pkgid -p ame).Trim() -replace '.*@', '')
-          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Prepare portable package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/release/${{ matrix.bin_name }}" "dist/${{ matrix.portable_name }}"
 
-      - name: Build DEB installer
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf dist/pkgroot
-          mkdir -p dist/pkgroot/DEBIAN dist/pkgroot/usr/bin
-          install -m 0755 target/release/ame dist/pkgroot/usr/bin/ame
-          cat > dist/pkgroot/DEBIAN/control <<EOF
-          Package: ame
-          Version: ${APP_VERSION}
-          Section: sound
-          Priority: optional
-          Architecture: amd64
-          Maintainer: Yamrc <yamrci@outlook.com>
-          Description: Ame music client
-          EOF
-          dpkg-deb --build dist/pkgroot "dist/${{ matrix.installer_name }}"
-
-      - name: Build MSI installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install wixtoolset --yes --no-progress
-          $sourceExe = (Resolve-Path "target/release/ame.exe").Path
-          $wixobj = "$env:RUNNER_TEMP/ame.wixobj"
-          candle.exe -ext WixUIExtension "-dSourceExe=$sourceExe" "-dProductVersion=$env:APP_VERSION" -out "$wixobj" "packaging/windows/ame.wxs"
-          light.exe -ext WixUIExtension -loc "packaging/windows/en-us.wxl" -out "dist/ame-windows-x86_64-en-US.msi" "$wixobj"
-          light.exe -ext WixUIExtension -loc "packaging/windows/zh-cn.wxl" -out "dist/ame-windows-x86_64-zh-CN.msi" "$wixobj"
-
-      - name: Build PKG installer
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf dist/pkgroot
-          mkdir -p dist/pkgroot/usr/local/bin
-          install -m 0755 target/release/ame dist/pkgroot/usr/local/bin/ame
-          pkgbuild \
-            --root dist/pkgroot \
-            --identifier com.yamrc.ame \
-            --version "${APP_VERSION}" \
-            --install-location / \
-            "dist/${{ matrix.installer_name }}"
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ame-${{ matrix.artifact_suffix }}
-          path: |
-            dist/${{ matrix.portable_name }}
-            dist/${{ matrix.installer_glob }}
+          path: dist/${{ matrix.portable_name }}
           if-no-files-found: error
