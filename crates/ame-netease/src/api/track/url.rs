@@ -16,10 +16,7 @@ impl TrackUrlRequest {
     }
 
     pub fn with_level(ids: Vec<i64>, level: String) -> Self {
-        Self {
-            ids,
-            level,
-        }
+        Self { ids, level }
     }
 }
 

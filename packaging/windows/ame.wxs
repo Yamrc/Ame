@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="Ame"
+    Language="!(loc.ProductLanguage)"
+    Version="$(var.ProductVersion)"
+    Manufacturer="Yamrc"
+    UpgradeCode="A5231D3F-2ED7-4E43-8F87-ECE918F16F58">
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine"
+      InstallPrivileges="elevated"
+      Platform="x64" />
+
+    <MajorUpgrade
+      AllowDowngrades="no"
+      DowngradeErrorMessage="!(loc.DowngradeErrorMessage)" />
+
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <UIRef Id="WixUI_InstallDir" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Ame">
+          <Component Id="cmpAmeExe" Guid="*" Win64="yes">
+            <File Id="filAmeExe" Source="$(var.SourceExe)" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="Ame" Level="1">
+      <ComponentRef Id="cmpAmeExe" />
+    </Feature>
+  </Product>
+</Wix>

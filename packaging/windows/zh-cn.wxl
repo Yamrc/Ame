@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="zh-cn">
+  <String Id="ProductLanguage">2052</String>
+  <String Id="DowngradeErrorMessage">已安装更高版本的 Ame。</String>
+</WixLocalization>

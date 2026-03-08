@@ -104,6 +104,7 @@ dependencies = [
  "gpui-tray",
  "qrcode",
  "reqwest",
+ "rust-embed",
  "serde",
  "serde_json",
  "tokio",
