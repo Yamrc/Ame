@@ -1,4 +1,4 @@
-use gpui::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
+use gpui::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb};
 
 use crate::component::{button, theme};
 
@@ -8,6 +8,7 @@ pub struct DiscoverPlaylistCard {
     pub name: String,
     pub track_count: u32,
     pub creator_name: String,
+    pub cover_url: Option<String>,
 }
 
 pub fn playlist_card(
@@ -26,22 +27,40 @@ pub fn playlist_card(
         .child(
             div()
                 .flex()
-                .flex_col()
+                .items_center()
+                .gap(px(12.))
+                .child(match item.cover_url.clone() {
+                    Some(url) => img(url)
+                        .size(px(58.))
+                        .rounded_md()
+                        .overflow_hidden()
+                        .into_any_element(),
+                    None => div()
+                        .size(px(58.))
+                        .rounded_md()
+                        .bg(rgb(0x3B3B3B))
+                        .into_any_element(),
+                })
                 .child(
                     div()
-                        .text_size(px(18.))
-                        .font_weight(FontWeight::BOLD)
-                        .child(item.name),
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .text_size(px(18.))
+                                .font_weight(FontWeight::BOLD)
+                                .child(item.name),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(14.))
+                                .text_color(rgb(theme::COLOR_SECONDARY))
+                                .child(format!(
+                                    "{} 首 · by {}",
+                                    item.track_count, item.creator_name
+                                )),
+                        ),
                 )
-                .child(
-                    div()
-                        .text_size(px(14.))
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .child(format!(
-                            "{} 首 · by {}",
-                            item.track_count, item.creator_name
-                        )),
-                ),
         )
         .child(
             button::pill_base("打开").on_mouse_down(MouseButton::Left, move |_, _, cx| {

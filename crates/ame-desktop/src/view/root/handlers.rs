@@ -18,6 +18,12 @@ use super::{
     PROGRESS_PERSIST_INTERVAL, QR_POLL_INTERVAL, QR_POLL_TIMEOUT, RootView,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthLevel {
+    Guest,
+    User,
+}
+
 impl RootView {
     pub(crate) fn queue_kernel_command(&mut self, command: AppCommand) {
         let _ = self.kernel_runtime.command_sender().send(command);
@@ -72,8 +78,80 @@ impl RootView {
         }
     }
 
-    fn request_cookie_header(&self) -> Option<String> {
-        auth_actions::build_cookie_header(&self.auth_bundle)
+    fn has_user_token(&self) -> bool {
+        self.auth_bundle
+            .music_u
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    }
+
+    fn has_guest_token(&self) -> bool {
+        self.has_user_token()
+            || self
+                .auth_bundle
+                .music_a
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+    }
+
+    fn ensure_guest_token(&mut self) -> bool {
+        if self.has_guest_token() {
+            return true;
+        }
+
+        let current_cookie = auth_actions::build_cookie_header(&self.auth_bundle);
+        match auth_actions::register_anonymous_blocking(current_cookie.as_deref()) {
+            Ok(response) => {
+                self.merge_auth_cookies(&response.set_cookie);
+                if self
+                    .auth_bundle
+                    .music_a
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty())
+                {
+                    true
+                } else {
+                    Self::push_error(
+                        &mut self.search_error,
+                        "游客登录返回成功但未拿到 MUSIC_A".to_string(),
+                    );
+                    false
+                }
+            }
+            Err(err) => {
+                Self::push_error(&mut self.search_error, format!("游客登录失败: {err}"));
+                false
+            }
+        }
+    }
+
+    fn ensure_auth_cookie(&mut self, level: AuthLevel) -> Option<String> {
+        let ok = match level {
+            AuthLevel::Guest => self.ensure_guest_token(),
+            AuthLevel::User => {
+                if self.has_user_token() {
+                    true
+                } else {
+                    Self::push_error(
+                        &mut self.search_error,
+                        "当前操作需要账号登录凭据(MUSIC_U)".to_string(),
+                    );
+                    false
+                }
+            }
+        };
+        if !ok {
+            return None;
+        }
+
+        let cookie = auth_actions::build_cookie_header(&self.auth_bundle);
+        if cookie.is_none() {
+            Self::push_error(
+                &mut self.search_error,
+                "鉴权凭据异常，已阻止请求".to_string(),
+            );
+        }
+        cookie
     }
 
     fn merge_auth_cookies(&mut self, set_cookie: &[String]) -> bool {
@@ -169,14 +247,20 @@ impl RootView {
             self.playlist_pages.clear();
             return;
         }
-        let cookie = self.request_cookie_header();
-        match auth_actions::fetch_login_status_blocking(cookie.as_deref()) {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
+            self.auth_account_summary = None;
+            self.auth_user_id = None;
+            return;
+        };
+        match auth_actions::fetch_login_status_blocking(Some(cookie.as_str())) {
             Ok(body) => {
                 self.auth_account_summary = auth_actions::login_summary_text(&body);
                 self.auth_user_id = body["data"]["account"]["id"]
                     .as_i64()
                     .or_else(|| body["data"]["profile"]["userId"].as_i64());
                 self.refresh_library_playlists();
+                self.refresh_home_playlists();
+                self.refresh_discover_playlists();
             }
             Err(err) => {
                 self.auth_account_summary = None;
@@ -196,8 +280,12 @@ impl RootView {
 
         self.library_loading = true;
         self.library_error = None;
-        let cookie = self.request_cookie_header();
-        match library_actions::fetch_user_playlists_blocking(user_id, cookie.as_deref()) {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
+            self.library_loading = false;
+            self.library_error = Some("缺少鉴权凭据".to_string());
+            return;
+        };
+        match library_actions::fetch_user_playlists_blocking(user_id, cookie.as_str()) {
             Ok(items) => {
                 self.library_playlists = items
                     .into_iter()
@@ -206,6 +294,7 @@ impl RootView {
                         name: item.name,
                         track_count: item.track_count,
                         creator_name: item.creator_name,
+                        cover_url: item.cover_url,
                     })
                     .collect();
             }
@@ -215,6 +304,64 @@ impl RootView {
             }
         }
         self.library_loading = false;
+    }
+
+    pub(super) fn refresh_home_playlists(&mut self) {
+        self.home_loading = true;
+        self.home_error = None;
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            self.home_loading = false;
+            self.home_error = Some("缺少鉴权凭据".to_string());
+            return;
+        };
+        match library_actions::fetch_top_playlists_blocking(20, 0, cookie.as_str()) {
+            Ok(items) => {
+                self.home_playlists = items
+                    .into_iter()
+                    .map(|item| library::LibraryPlaylistCard {
+                        id: item.id,
+                        name: item.name,
+                        track_count: item.track_count,
+                        creator_name: item.creator_name,
+                        cover_url: item.cover_url,
+                    })
+                    .collect();
+            }
+            Err(err) => {
+                self.home_playlists.clear();
+                self.home_error = Some(err.to_string());
+            }
+        }
+        self.home_loading = false;
+    }
+
+    pub(super) fn refresh_discover_playlists(&mut self) {
+        self.discover_loading = true;
+        self.discover_error = None;
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            self.discover_loading = false;
+            self.discover_error = Some("缺少鉴权凭据".to_string());
+            return;
+        };
+        match library_actions::fetch_top_playlists_blocking(60, 0, cookie.as_str()) {
+            Ok(items) => {
+                self.discover_playlists = items
+                    .into_iter()
+                    .map(|item| library::LibraryPlaylistCard {
+                        id: item.id,
+                        name: item.name,
+                        track_count: item.track_count,
+                        creator_name: item.creator_name,
+                        cover_url: item.cover_url,
+                    })
+                    .collect();
+            }
+            Err(err) => {
+                self.discover_playlists.clear();
+                self.discover_error = Some(err.to_string());
+            }
+        }
+        self.discover_loading = false;
     }
 
     pub(super) fn open_playlist_from_library(&mut self, playlist_id: i64, cx: &mut Context<Self>) {
@@ -230,8 +377,13 @@ impl RootView {
         self.playlist_error = None;
         cx.notify();
 
-        let cookie = self.request_cookie_header();
-        match library_actions::fetch_playlist_detail_blocking(playlist_id, cookie.as_deref()) {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            self.playlist_loading = false;
+            self.playlist_error = Some("缺少鉴权凭据".to_string());
+            cx.notify();
+            return;
+        };
+        match library_actions::fetch_playlist_detail_blocking(playlist_id, cookie.as_str()) {
             Ok(detail) => {
                 let page = playlist::PlaylistPage {
                     id: detail.id,
@@ -260,17 +412,11 @@ impl RootView {
     }
 
     pub(super) fn ensure_guest_session(&mut self) {
-        let cookie = self.request_cookie_header();
-        match auth_actions::register_anonymous_blocking(cookie.as_deref()) {
-            Ok(response) => {
-                self.merge_auth_cookies(&response.set_cookie);
-                if self.auth_bundle.music_a.is_some() {
-                    self.login_qr_status = Some("已获取游客凭据".to_string());
-                }
-            }
-            Err(err) => {
-                Self::push_error(&mut self.search_error, format!("游客登录失败: {err}"));
-            }
+        if self.has_guest_token() {
+            return;
+        }
+        if self.ensure_guest_token() {
+            self.login_qr_status = Some("已获取游客凭据".to_string());
         }
     }
 
@@ -283,8 +429,10 @@ impl RootView {
             return;
         }
 
-        let cookie = self.request_cookie_header();
-        match auth_actions::refresh_login_token_blocking(cookie.as_deref()) {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
+            return;
+        };
+        match auth_actions::refresh_login_token_blocking(Some(cookie.as_str())) {
             Ok(response) => {
                 self.merge_auth_cookies(&response.set_cookie);
                 self.refresh_login_summary();
@@ -312,8 +460,10 @@ impl RootView {
     }
 
     pub(super) fn generate_login_qr(&mut self, cx: &mut Context<Self>) {
-        let cookie = self.request_cookie_header();
-        let response = match auth_actions::fetch_login_qr_key_blocking(cookie.as_deref()) {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            return;
+        };
+        let response = match auth_actions::fetch_login_qr_key_blocking(Some(cookie.as_str())) {
             Ok(response) => response,
             Err(err) => {
                 Self::push_error(
@@ -407,8 +557,11 @@ impl RootView {
         };
         self.login_qr_last_polled_at = Some(now);
 
-        let cookie = self.request_cookie_header();
-        match auth_actions::check_login_qr_blocking(&key, cookie.as_deref()) {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            self.login_qr_polling = false;
+            return true;
+        };
+        match auth_actions::check_login_qr_blocking(&key, Some(cookie.as_str())) {
             Ok(response) => {
                 let code = response
                     .body
@@ -450,9 +603,9 @@ impl RootView {
         queue_index: usize,
         cx: &mut Context<Self>,
     ) -> Option<String> {
-        let cookie = self.request_cookie_header();
-        let source_url = match player_actions::fetch_track_url_blocking(track_id, cookie.as_deref())
-        {
+        let cookie = self.ensure_auth_cookie(AuthLevel::Guest)?;
+        let source_url =
+            match player_actions::fetch_track_url_blocking(track_id, Some(cookie.as_str())) {
             Ok(url) => url,
             Err(err) => {
                 self.search_error = Some(format!("获取播放地址失败: {err}"));
@@ -548,8 +701,14 @@ impl RootView {
         self.search_error = None;
         cx.notify();
 
-        let cookie = self.request_cookie_header();
-        let result = search_actions::search_song_blocking(&query, cookie.as_deref());
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            self.search_results.clear();
+            self.search_loading = false;
+            self.search_error = Some("缺少鉴权凭据".to_string());
+            cx.notify();
+            return;
+        };
+        let result = search_actions::search_song_blocking(&query, Some(cookie.as_str()));
         match result {
             Ok(items) => {
                 self.search_results = items
@@ -585,9 +744,11 @@ impl RootView {
         song: search::SearchSong,
         cx: &mut Context<Self>,
     ) {
-        let cookie = self.request_cookie_header();
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            return;
+        };
         let metadata =
-            player_actions::fetch_track_metadata_blocking(song.id, cookie.as_deref()).ok();
+            player_actions::fetch_track_metadata_blocking(song.id, Some(cookie.as_str())).ok();
         let artists = metadata
             .as_ref()
             .map(|meta| meta.artists.clone())
@@ -618,9 +779,11 @@ impl RootView {
         song: search::SearchSong,
         cx: &mut Context<Self>,
     ) {
-        let cookie = self.request_cookie_header();
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            return;
+        };
         let metadata =
-            player_actions::fetch_track_metadata_blocking(song.id, cookie.as_deref()).ok();
+            player_actions::fetch_track_metadata_blocking(song.id, Some(cookie.as_str())).ok();
         let artists = metadata
             .as_ref()
             .map(|meta| meta.artists.clone())

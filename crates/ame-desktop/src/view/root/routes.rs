@@ -1,8 +1,8 @@
-use gpui::{AnyElement, Entity, MouseButton, prelude::*};
+use gpui::{AnyElement, Entity, ListSizingBehavior, MouseButton, ScrollHandle, prelude::*, px};
 use gpui_router::{Route, Routes, use_params};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::component::button;
+use crate::component::{button, virtual_list};
 use crate::entity::app::CloseBehavior;
 use crate::entity::player::PlayerEntity;
 use crate::kernel::{AppCommand, SongInput};
@@ -11,6 +11,13 @@ use crate::view::{discover, home, library, login, next, playlist, search, settin
 use super::RootView;
 
 pub(super) struct RoutesModel {
+    pub home_playlists: Vec<library::LibraryPlaylistCard>,
+    pub is_user_logged_in: bool,
+    pub home_loading: bool,
+    pub home_error: Option<String>,
+    pub discover_playlists: Vec<library::LibraryPlaylistCard>,
+    pub discover_loading: bool,
+    pub discover_error: Option<String>,
     pub search_results: Vec<search::SearchSong>,
     pub search_loading: bool,
     pub search_error: Option<String>,
@@ -18,6 +25,7 @@ pub(super) struct RoutesModel {
     pub library_loading: bool,
     pub library_error: Option<String>,
     pub playlist_pages: HashMap<i64, playlist::PlaylistPage>,
+    pub page_scroll_handle: ScrollHandle,
     pub playlist_loading: bool,
     pub playlist_error: Option<String>,
     pub auth_account_summary: Option<String>,
@@ -26,6 +34,91 @@ pub(super) struct RoutesModel {
 }
 
 impl RootView {
+    fn build_home_featured_rows(
+        playlists: &[library::LibraryPlaylistCard],
+        root_entity: &Entity<RootView>,
+        is_user_logged_in: bool,
+    ) -> Vec<AnyElement> {
+        let mut rows = Vec::with_capacity(2);
+
+        let daily_root = root_entity.clone();
+        let daily_playlist_id = playlists.first().map(|item| item.id);
+        rows.push(home::featured_card(
+            home::HomePlaylistCard {
+                id: daily_playlist_id.unwrap_or_default(),
+                kind: home::HomeFeaturedKind::Daily,
+                name: "每日推荐歌单".to_string(),
+                subtitle: "根据你的口味更新".to_string(),
+                cover_url: playlists.first().and_then(|item| item.cover_url.clone()),
+            },
+            move |cx| {
+                daily_root.update(cx, |this, _| {
+                    if is_user_logged_in {
+                        if let Some(playlist_id) = daily_playlist_id {
+                            this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(playlist_id));
+                        } else {
+                            this.queue_kernel_command(AppCommand::Navigate("/explore".to_string()));
+                        }
+                    } else {
+                        this.queue_kernel_command(AppCommand::Navigate("/login".to_string()));
+                    }
+                });
+            },
+        ));
+
+        let fm_root = root_entity.clone();
+        rows.push(home::featured_card(
+            home::HomePlaylistCard {
+                id: 0,
+                kind: home::HomeFeaturedKind::Fm,
+                name: "私人 FM".to_string(),
+                subtitle: "连续播放你可能喜欢的音乐".to_string(),
+                cover_url: playlists.get(1).and_then(|item| item.cover_url.clone()),
+            },
+            move |cx| {
+                fm_root.update(cx, |this, _| {
+                    let target = if is_user_logged_in {
+                        "/library"
+                    } else {
+                        "/login"
+                    };
+                    this.queue_kernel_command(AppCommand::Navigate(target.to_string()));
+                });
+            },
+        ));
+
+        rows
+    }
+
+    fn build_home_playlist_rows(
+        playlists: &[library::LibraryPlaylistCard],
+        root_entity: &Entity<RootView>,
+    ) -> Vec<AnyElement> {
+        playlists
+            .iter()
+            .take(15)
+            .cloned()
+            .map(|item| {
+                let playlist_id = item.id;
+                let root_entity = root_entity.clone();
+                home::playlist_card(
+                    home::HomePlaylistCard {
+                        id: item.id,
+                        kind: home::HomeFeaturedKind::Playlist,
+                        name: item.name,
+                        subtitle: format!("{} 首 · by {}", item.track_count, item.creator_name),
+                        cover_url: item.cover_url,
+                    },
+                    move |cx| {
+                        root_entity.update(cx, |this, _| {
+                            this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(playlist_id))
+                        });
+                    },
+                )
+            })
+            .collect()
+    }
+
     fn build_search_rows(
         results: &[search::SearchSong],
         root_entity: &Entity<RootView>,
@@ -96,6 +189,7 @@ impl RootView {
                         name: item.name,
                         track_count: item.track_count,
                         creator_name: item.creator_name,
+                        cover_url: item.cover_url,
                     },
                     move |cx| {
                         root_entity.update(cx, |this, _| {
@@ -114,6 +208,13 @@ impl RootView {
         model: RoutesModel,
     ) -> AnyElement {
         let RoutesModel {
+            home_playlists,
+            is_user_logged_in,
+            home_loading,
+            home_error,
+            discover_playlists,
+            discover_loading,
+            discover_error,
             search_results,
             search_loading,
             search_error,
@@ -121,6 +222,7 @@ impl RootView {
             library_loading,
             library_error,
             playlist_pages,
+            page_scroll_handle,
             playlist_loading,
             playlist_error,
             auth_account_summary,
@@ -130,16 +232,32 @@ impl RootView {
 
         Routes::new()
             .basename("/")
-            .child(Route::new().index().element(|_, _| home::render()))
+            .child(Route::new().index().element({
+                let root_entity = root_entity.clone();
+                let home_playlists = home_playlists.clone();
+                let home_error = home_error.clone();
+                move |_, _| {
+                    home::render(
+                        home_loading,
+                        home_error.as_deref(),
+                        Self::build_home_featured_rows(
+                            &home_playlists,
+                            &root_entity,
+                            is_user_logged_in,
+                        ),
+                        Self::build_home_playlist_rows(&home_playlists, &root_entity),
+                    )
+                }
+            }))
             .child(Route::new().path("explore").element({
                 let root_entity = root_entity.clone();
-                let library_playlists = library_playlists.clone();
-                let library_error = library_error.clone();
+                let discover_playlists = discover_playlists.clone();
+                let discover_error = discover_error.clone();
                 move |_, _| {
                     discover::render(
-                        library_loading,
-                        library_error.as_deref(),
-                        Self::build_discover_rows(&library_playlists, &root_entity),
+                        discover_loading,
+                        discover_error.as_deref(),
+                        Self::build_discover_rows(&discover_playlists, &root_entity),
                     )
                 }
             }))
@@ -260,50 +378,63 @@ impl RootView {
                         .unwrap_or_else(|| "0".to_string());
                     let playlist_id_num = playlist_id.parse::<i64>().ok().unwrap_or_default();
                     let playlist_page = playlist_pages.get(&playlist_id_num).cloned();
-                    let playlist_rows = playlist_page
-                        .as_ref()
-                        .map(|page| {
-                            page.tracks
-                                .iter()
-                                .cloned()
-                                .map(|track| {
-                                    let play_track = search::SearchSong {
-                                        id: track.id,
-                                        name: track.name.clone(),
-                                        artists: track.artists.clone(),
-                                    };
-                                    let queue_track = play_track.clone();
-                                    let root_for_play = root_entity.clone();
-                                    let root_for_queue = root_entity.clone();
-                                    playlist::track_row(
-                                        track,
-                                        move |cx| {
-                                            root_for_play.update(cx, |this, _| {
-                                                this.queue_kernel_command(
-                                                    AppCommand::EnqueueSongAndPlay(SongInput {
-                                                        id: play_track.id,
-                                                        name: play_track.name.clone(),
-                                                        artists: play_track.artists.clone(),
-                                                    }),
-                                                )
-                                            });
-                                        },
-                                        move |cx| {
-                                            root_for_queue.update(cx, |this, _| {
-                                                this.queue_kernel_command(
-                                                    AppCommand::EnqueueSongOnly(SongInput {
-                                                        id: queue_track.id,
-                                                        name: queue_track.name.clone(),
-                                                        artists: queue_track.artists.clone(),
-                                                    }),
-                                                )
-                                            });
-                                        },
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default();
+                    let playlist_rows = playlist_page.as_ref().and_then(|page| {
+                        if page.tracks.is_empty() {
+                            return None;
+                        }
+                        let tracks = Arc::new(page.tracks.clone());
+                        let heights = Arc::new(vec![px(84.); tracks.len()]);
+                        let root_for_list = root_entity.clone();
+                        let list = virtual_list::v_virtual_list(
+                            ("playlist-tracks", page.id.unsigned_abs() as usize),
+                            heights,
+                            move |visible_range, _, _| {
+                                visible_range
+                                    .map(|index| {
+                                        let track = tracks[index].clone();
+                                        let play_track = search::SearchSong {
+                                            id: track.id,
+                                            name: track.name.clone(),
+                                            artists: track.artists.clone(),
+                                        };
+                                        let queue_track = play_track.clone();
+                                        let root_for_play = root_for_list.clone();
+                                        let root_for_queue = root_for_list.clone();
+                                        gpui::div().pb(px(8.)).child(playlist::track_row(
+                                            track,
+                                            move |cx| {
+                                                root_for_play.update(cx, |this, _| {
+                                                    this.queue_kernel_command(
+                                                        AppCommand::EnqueueSongAndPlay(SongInput {
+                                                            id: play_track.id,
+                                                            name: play_track.name.clone(),
+                                                            artists: play_track.artists.clone(),
+                                                        }),
+                                                    )
+                                                });
+                                            },
+                                            move |cx| {
+                                                root_for_queue.update(cx, |this, _| {
+                                                    this.queue_kernel_command(
+                                                        AppCommand::EnqueueSongOnly(SongInput {
+                                                            id: queue_track.id,
+                                                            name: queue_track.name.clone(),
+                                                            artists: queue_track.artists.clone(),
+                                                        }),
+                                                    )
+                                                });
+                                            },
+                                        ))
+                                    })
+                                    .collect::<Vec<_>>()
+                            },
+                        )
+                        .with_external_viewport_scroll(&page_scroll_handle)
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .with_overscan(2)
+                        .w_full();
+                        Some(list.into_any_element())
+                    });
 
                     playlist::render(
                         &playlist_id,

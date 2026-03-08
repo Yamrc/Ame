@@ -2,8 +2,8 @@ mod handlers;
 mod routes;
 
 use gpui::{
-    AnyElement, Context, Entity, Image, MouseButton, MouseMoveEvent, Render, ScrollWheelEvent,
-    Subscription, Window, div, prelude::*, relative, rgb,
+    AnyElement, Context, Entity, Image, Render, ScrollWheelEvent, Subscription, Window, div,
+    prelude::*, relative, rgb,
 };
 use gpui_router::RouterState;
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,7 @@ use ame_core::storage::{AppStorage, SettingsStore, StateStore};
 
 use crate::component::{
     bottom_bar, input,
+    net_image_cache,
     nav_bar::{self, NavBarActions, NavBarModel},
     scroll::{
         ScrollBarActions, ScrollBarModel, ScrollBarStyle, SmoothScrollConfig, SmoothScrollState,
@@ -66,12 +67,19 @@ pub struct RootView {
     search_error: Option<String>,
     main_scroll: SmoothScrollState,
     main_scroll_config: SmoothScrollConfig,
+    image_cache: Entity<net_image_cache::LruImageCache>,
     settings_store: Option<SettingsStore>,
     state_store: Option<StateStore>,
     credential_store: CredentialStore,
     auth_bundle: AuthBundle,
     auth_account_summary: Option<String>,
     auth_user_id: Option<i64>,
+    home_playlists: Vec<library::LibraryPlaylistCard>,
+    home_loading: bool,
+    home_error: Option<String>,
+    discover_playlists: Vec<library::LibraryPlaylistCard>,
+    discover_loading: bool,
+    discover_error: Option<String>,
     library_playlists: Vec<library::LibraryPlaylistCard>,
     library_loading: bool,
     library_error: Option<String>,
@@ -221,6 +229,7 @@ impl RootView {
                 .placeholder("搜索")
                 .disabled(false)
         });
+        let image_cache = net_image_cache::LruImageCache::default_for_app(cx);
         let progress_slider_style = SliderStyle::for_variant(SliderVariant::ProgressLine)
             .thumb_visibility(SliderThumbVisibility::DragOnly)
             .root_height(gpui::px(2.))
@@ -305,12 +314,19 @@ impl RootView {
             search_error: None,
             main_scroll: SmoothScrollState::new(gpui::ScrollHandle::default()),
             main_scroll_config,
+            image_cache,
             settings_store,
             state_store,
             credential_store,
             auth_bundle,
             auth_account_summary: None,
             auth_user_id: None,
+            home_playlists: Vec::new(),
+            home_loading: false,
+            home_error: None,
+            discover_playlists: Vec::new(),
+            discover_loading: false,
+            discover_error: None,
             library_playlists: Vec::new(),
             library_loading: false,
             library_error: None,
@@ -352,6 +368,8 @@ impl RootView {
         } else {
             root.refresh_login_summary();
         }
+        root.refresh_home_playlists();
+        root.refresh_discover_playlists();
         if persisted_was_playing {
             root.login_qr_status = root
                 .login_qr_status
@@ -475,6 +493,17 @@ impl Render for RootView {
             root_entity,
             player_entity,
             routes::RoutesModel {
+                home_playlists: self.home_playlists.clone(),
+                is_user_logged_in: self
+                    .auth_bundle
+                    .music_u
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty()),
+                home_loading: self.home_loading,
+                home_error: self.home_error.clone(),
+                discover_playlists: self.discover_playlists.clone(),
+                discover_loading: self.discover_loading,
+                discover_error: self.discover_error.clone(),
                 search_results: self.search_results.clone(),
                 search_loading: self.search_loading,
                 search_error: self.search_error.clone(),
@@ -482,6 +511,7 @@ impl Render for RootView {
                 library_loading: self.library_loading,
                 library_error: self.library_error.clone(),
                 playlist_pages: self.playlist_pages.clone(),
+                page_scroll_handle: self.main_scroll.handle.clone(),
                 playlist_loading: self.playlist_loading,
                 playlist_error: self.playlist_error.clone(),
                 auth_account_summary: self.auth_account_summary.clone(),
@@ -554,63 +584,47 @@ impl Render for RootView {
             },
         );
 
+        let main_content = div()
+            .id("main-content")
+            .w_full()
+            .flex_grow()
+            .min_h_0()
+            .relative()
+            .overflow_hidden()
+            .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
+                this.main_scroll.apply_scroll_delta(
+                    event.delta,
+                    window.line_height(),
+                    &this.main_scroll_config,
+                );
+                cx.stop_propagation();
+                cx.notify();
+            }))
+            .px(relative(0.1))
+            .py_0()
+            .child(
+                div()
+                    .id("main-scroll-viewport")
+                    .w_full()
+                    .h_full()
+                    .track_scroll(&self.main_scroll.handle)
+                    .overflow_hidden()
+                    .child(routes),
+            )
+            .child(self.render_scrollbar(cx))
+            .into_any_element();
+
         div()
             .size_full()
             .bg(rgb(theme::COLOR_BODY_BG_DARK))
             .text_color(rgb(theme::COLOR_TEXT_DARK))
+            .image_cache(self.image_cache.clone())
             .flex()
             .flex_col()
             .overflow_hidden()
             .child(top)
             .child(nav)
-            .child(
-                div()
-                    .id("main-content")
-                    .w_full()
-                    .flex_grow()
-                    .min_h_0()
-                    .relative()
-                    .overflow_hidden()
-                    .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
-                        this.main_scroll.apply_scroll_delta(
-                            event.delta,
-                            window.line_height(),
-                            &this.main_scroll_config,
-                        );
-                        cx.stop_propagation();
-                        cx.notify();
-                    }))
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
-                        let origin = this.main_scroll.handle.bounds().origin;
-                        let local_position = event.position - origin;
-                        if this
-                            .main_scroll
-                            .drag_to(local_position, &this.main_scroll_config)
-                        {
-                            cx.notify();
-                        }
-                    }))
-                    .on_mouse_up_out(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| {
-                            if this.main_scroll.end_drag() {
-                                cx.notify();
-                            }
-                        }),
-                    )
-                    .px(relative(0.1))
-                    .py_0()
-                    .child(
-                        div()
-                            .id("main-scroll-viewport")
-                            .w_full()
-                            .h_full()
-                            .track_scroll(&self.main_scroll.handle)
-                            .overflow_hidden()
-                            .child(routes),
-                    )
-                    .child(self.render_scrollbar(cx)),
-            )
+            .child(main_content)
             .child(bottom)
     }
 }

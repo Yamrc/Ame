@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, Bounds, Context, IsZero, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    Point, ScrollDelta, ScrollHandle, div, point, prelude::*, px, rgba, size,
+    AnyElement, Bounds, Context, DragMoveEvent, IsZero, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Pixels, Point, Render, ScrollDelta, ScrollHandle, Window, div, point,
+    prelude::*, px, rgba, size,
 };
 
 use crate::component::theme;
@@ -175,6 +176,17 @@ type ScrollHoverCallback<V> = Arc<dyn Fn(&mut V, bool, &mut Context<V>)>;
 type ScrollPointCallback<V> = Arc<dyn Fn(&mut V, Point<Pixels>, &mut Context<V>)>;
 type ScrollUpCallback<V> = Arc<dyn Fn(&mut V, &mut Context<V>)>;
 
+#[derive(Clone, Copy)]
+struct ScrollDragToken;
+
+struct ScrollDragGhost;
+
+impl Render for ScrollDragGhost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size(px(0.))
+    }
+}
+
 pub fn render_scrollbar_overlay<V: 'static>(
     model: &ScrollBarModel,
     actions: &ScrollBarActions<V>,
@@ -193,7 +205,9 @@ pub fn render_scrollbar_overlay<V: 'static>(
     let hover_action = actions.on_hover.clone();
     let mouse_down_action = actions.on_mouse_down.clone();
     let mouse_move_action = actions.on_mouse_move.clone();
+    let mouse_move_action_drag = mouse_move_action.clone();
     let mouse_up_action = actions.on_mouse_up.clone();
+    let mouse_up_action_out = mouse_up_action.clone();
     let viewport_origin = model.viewport_origin;
     let viewport_height = model.metrics.track_bounds.size.height;
     let metrics = model.metrics;
@@ -215,14 +229,28 @@ pub fn render_scrollbar_overlay<V: 'static>(
                 cx.stop_propagation();
             }),
         )
+        .on_drag(ScrollDragToken, |_, _, _, cx| cx.new(|_| ScrollDragGhost))
         .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
             mouse_move_action(this, event.position - viewport_origin, cx);
             cx.stop_propagation();
         }))
+        .on_drag_move::<ScrollDragToken>(cx.listener(
+            move |this, event: &DragMoveEvent<ScrollDragToken>, _, cx| {
+                mouse_move_action_drag(this, event.event.position - viewport_origin, cx);
+                cx.stop_propagation();
+            },
+        ))
         .on_mouse_up(
             MouseButton::Left,
             cx.listener(move |this, _, _, cx| {
                 mouse_up_action(this, cx);
+                cx.stop_propagation();
+            }),
+        )
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(move |this, _, _, cx| {
+                mouse_up_action_out(this, cx);
                 cx.stop_propagation();
             }),
         )

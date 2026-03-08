@@ -1,5 +1,5 @@
 use gpui::{
-    App, Bounds, Context, Element, ElementId, Entity, EventEmitter, GlobalElementId,
+    App, Bounds, Context, DragMoveEvent, Element, ElementId, Entity, EventEmitter, GlobalElementId,
     InteractiveElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     PaintQuad, Pixels, Point, Render, Rgba, Style, Window, div, fill, point, prelude::*, px,
     relative, rgb, rgba, size,
@@ -168,6 +168,17 @@ pub struct SliderState {
 
 impl EventEmitter<SliderEvent> for SliderState {}
 
+#[derive(Clone, Copy)]
+struct SliderDragToken;
+
+struct SliderDragGhost;
+
+impl Render for SliderDragGhost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size(px(0.))
+    }
+}
+
 impl SliderState {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let _ = cx;
@@ -260,6 +271,18 @@ impl SliderState {
             return;
         }
         self.update_by_position(event.position, cx);
+    }
+
+    fn drag_move_global(
+        &mut self,
+        event: &DragMoveEvent<SliderDragToken>,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.disabled || !self.dragging {
+            return;
+        }
+        self.update_by_position(event.event.position, cx);
     }
 
     fn end_drag(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -435,8 +458,10 @@ impl Render for SliderState {
             .cursor_pointer()
             .on_hover(cx.listener(|this, hovered, window, cx| this.on_hover(*hovered, window, cx)))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_drag))
+            .on_drag(SliderDragToken, |_, _, _, cx| cx.new(|_| SliderDragGhost))
             .on_mouse_down_out(cx.listener(Self::clear_hover_on_down_out))
             .on_mouse_move(cx.listener(Self::drag_move))
+            .on_drag_move::<SliderDragToken>(cx.listener(Self::drag_move_global))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::end_drag))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::end_drag))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::clear_hover))

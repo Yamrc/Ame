@@ -16,6 +16,18 @@ where
     Ok(runtime.block_on(future)?)
 }
 
+fn compact_cover_url(raw: Option<&str>, size: u32) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if raw.contains("param=") {
+        return Some(raw.to_string());
+    }
+    let separator = if raw.contains('?') { '&' } else { '?' };
+    Some(format!("{raw}{separator}param={size}y{size}"))
+}
+
 pub fn fetch_track_url_blocking(track_id: i64, cookie: Option<&str>) -> Result<String> {
     let client = cookie
         .filter(|cookie| !cookie.trim().is_empty())
@@ -64,10 +76,7 @@ pub fn fetch_track_metadata_blocking(track_id: i64, cookie: Option<&str>) -> Res
         .filter(|artists| !artists.is_empty())
         .unwrap_or_else(|| "未知艺人".to_string());
 
-    let cover_url = song["al"]["picUrl"]
-        .as_str()
-        .filter(|url| !url.is_empty())
-        .map(ToString::to_string);
+    let cover_url = compact_cover_url(song["al"]["picUrl"].as_str(), 64);
 
     Ok(TrackMetadata { artists, cover_url })
 }

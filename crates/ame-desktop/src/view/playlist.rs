@@ -77,7 +77,7 @@ pub fn render(
     loading: bool,
     error: Option<&str>,
     playlist: Option<&PlaylistPage>,
-    rows: Vec<AnyElement>,
+    track_list: Option<AnyElement>,
 ) -> AnyElement {
     let title = playlist
         .map(|item| item.name.clone())
@@ -128,22 +128,18 @@ pub fn render(
         } else {
             div().into_any_element()
         })
-        .child(if rows.is_empty() {
-            div()
-                .w_full()
-                .rounded_lg()
-                .bg(rgb(theme::COLOR_CARD_DARK))
-                .px_4()
-                .py_3()
-                .text_color(rgb(theme::COLOR_SECONDARY))
-                .child("暂无歌曲")
-                .into_any_element()
-        } else {
-            rows.into_iter()
-                .fold(div().w_full().flex().flex_col().gap_2(), |list, row| {
-                    list.child(row)
-                })
-                .into_any_element()
-        })
+        .child(div().w_full().child(if let Some(track_list) = track_list {
+                track_list
+            } else {
+                div()
+                    .w_full()
+                    .rounded_lg()
+                    .bg(rgb(theme::COLOR_CARD_DARK))
+                    .px_4()
+                    .py_3()
+                    .text_color(rgb(theme::COLOR_SECONDARY))
+                    .child("暂无歌曲")
+                    .into_any_element()
+            }))
         .into_any_element()
 }

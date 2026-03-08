@@ -9,6 +9,7 @@ pub struct LibraryPlaylistCard {
     pub name: String,
     pub track_count: u32,
     pub creator_name: String,
+    pub cover_url: Option<String>,
 }
 
 pub fn playlist_row(item: LibraryPlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
