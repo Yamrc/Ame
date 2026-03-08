@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
@@ -49,16 +51,21 @@ jobs:
           - os: ubuntu-latest
             artifact_suffix: linux-x86_64
             bin_name: ame
+            artifact_name: ame-linux-x86_64
           - os: windows-latest
             artifact_suffix: windows-x86_64
             bin_name: ame.exe
+            artifact_name: ame-windows-x86_64.exe
           - os: macos-latest
             artifact_suffix: macos-arm64
             bin_name: ame
+            artifact_name: ame-macos-arm64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
@@ -66,13 +73,13 @@ jobs:
           linux-packages: ${{ env.LINUX_PACKAGES }}
 
       - name: Cargo build release
-        run: cargo build -q --release -p ame
+        run: cargo build --release
 
       - name: Prepare raw binary and SHA1
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $artifactName = "ame-${{ matrix.artifact_suffix }}"
+          $artifactName = "${{ matrix.artifact_name }}"
           Copy-Item "target/release/${{ matrix.bin_name }}" "dist/$artifactName"
           $hash = (Get-FileHash -Path "dist/$artifactName" -Algorithm SHA1).Hash.ToLower()
           "$hash  $artifactName" | Out-File -FilePath "dist/$artifactName.sha1" -Encoding ascii
@@ -82,8 +89,8 @@ jobs:
         with:
           name: ame-${{ matrix.artifact_suffix }}
           path: |
-            dist/ame-${{ matrix.artifact_suffix }}
-            dist/ame-${{ matrix.artifact_suffix }}.sha1
+            dist/${{ matrix.artifact_name }}
+            dist/${{ matrix.artifact_name }}.sha1
           if-no-files-found: error
 
   publish:
@@ -96,6 +103,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -104,11 +112,19 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Get previous tag
-        id: previous_tag
-        uses: WyriHaximus/github-action-get-previous-tag@v1
-        with:
-          fallback: ""
+      - name: Resolve changelog range
+        id: changelog_range
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          prev_tag="$(git for-each-ref --sort=-creatordate --format='%(refname:strip=2)' refs/tags | grep -vx "$RELEASE_TAG" | head -n1 || true)"
+          if [ -n "$prev_tag" ]; then
+            echo "from_ref=$prev_tag" >> "$GITHUB_OUTPUT"
+          else
+            root_commit="$(git rev-list --max-parents=0 "$RELEASE_TAG" | tail -n1)"
+            echo "from_ref=$root_commit" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Generate release notes
         id: changelog
@@ -116,12 +132,72 @@ jobs:
         with:
           mode: COMMIT
           toTag: ${{ env.RELEASE_TAG }}
-          fromTag: ${{ steps.previous_tag.outputs.tag }}
+          fromTag: ${{ steps.changelog_range.outputs.from_ref }}
           configurationJson: |
             {
               "template": "## What's Changed\n#{{CHANGELOG}}\n\n**Full Changelog**: #{{RELEASE_DIFF}}",
               "empty_template": "No significant changes.",
-              "commit_template": "- #{{TITLE}} (#{{HASH}}) @#{{AUTHOR}}",
+              "categories": [
+                {
+                  "title": "✨ Features",
+                  "labels": ["feat"]
+                },
+                {
+                  "title": "🐛 Fixes",
+                  "labels": ["fix"]
+                },
+                {
+                  "title": "♻️ Refactors",
+                  "labels": ["refactor"]
+                },
+                {
+                  "title": "⚡ Performance",
+                  "labels": ["perf"]
+                },
+                {
+                  "title": "📝 Docs",
+                  "labels": ["docs"]
+                },
+                {
+                  "title": "🔧 Chore & CI",
+                  "labels": ["chore", "ci"]
+                },
+                {
+                  "title": "📦 Other",
+                  "labels": []
+                }
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^(?i)feat(?:\\([^\\)]*\\))?:",
+                  "target": "feat"
+                },
+                {
+                  "pattern": "^(?i)fix(?:\\([^\\)]*\\))?:",
+                  "target": "fix"
+                },
+                {
+                  "pattern": "^(?i)refactor(?:\\([^\\)]*\\))?:",
+                  "target": "refactor"
+                },
+                {
+                  "pattern": "^(?i)perf(?:\\([^\\)]*\\))?:",
+                  "target": "perf"
+                },
+                {
+                  "pattern": "^(?i)docs?(?:\\([^\\)]*\\))?:",
+                  "target": "docs"
+                },
+                {
+                  "pattern": "^(?i)chore(?:\\([^\\)]*\\))?:",
+                  "target": "chore"
+                },
+                {
+                  "pattern": "^(?i)ci(?:\\([^\\)]*\\))?:",
+                  "target": "ci"
+                }
+              ],
+              "commit_template": "- #{{TITLE}} (#{{MERGE_SHA}}) @#{{AUTHOR}}",
               "sort": {
                 "order": "DESC",
                 "on_property": "mergedAt"
@@ -137,7 +213,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "$CHANGELOG_BODY" \
-            | grep -Eiv '([0-9]+\+)?dependabot\[bot\]@users\.noreply\.github\.com' \
+            | grep -Eiv '([0-9]+\+)?dependabot\[bot\]@users\.noreply\.github\.com|@dependabot\[bot\]' \
             > release-notes.md || true
           if [ ! -s release-notes.md ]; then
             echo "No significant changes." > release-notes.md

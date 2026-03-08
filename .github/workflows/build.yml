@@ -61,22 +61,11 @@ jobs:
           linux-packages: ${{ env.LINUX_PACKAGES }}
 
       - name: Cargo build release
-        run: cargo build -q --release -p ame
-
-      - name: Prepare raw binary and SHA1
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $artifactName = "ame-${{ matrix.artifact_suffix }}"
-          Copy-Item "target/release/${{ matrix.bin_name }}" "dist/$artifactName"
-          $hash = (Get-FileHash -Path "dist/$artifactName" -Algorithm SHA1).Hash.ToLower()
-          "$hash  $artifactName" | Out-File -FilePath "dist/$artifactName.sha1" -Encoding ascii
+        run: cargo build --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ame-${{ matrix.artifact_suffix }}
-          path: |
-            dist/ame-${{ matrix.artifact_suffix }}
-            dist/ame-${{ matrix.artifact_suffix }}.sha1
+          path: target/release/${{ matrix.bin_name }}
           if-no-files-found: error
