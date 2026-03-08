@@ -61,7 +61,7 @@ jobs:
           linux-packages: ${{ env.LINUX_PACKAGES }}
 
       - name: Cargo build release
-        run: cargo build --release
+        run: cargo build --release -p ame
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

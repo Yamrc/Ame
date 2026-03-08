@@ -55,7 +55,7 @@ jobs:
           - os: windows-latest
             artifact_suffix: windows-x86_64
             bin_name: ame.exe
-            artifact_name: ame-windows-x86_64.exe
+            artifact_name: ame.exe
           - os: macos-latest
             artifact_suffix: macos-arm64
             bin_name: ame
@@ -67,13 +67,23 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: List icon assets
+        shell: pwsh
+        run: |
+          if (Test-Path "resouses/icon") {
+            Get-ChildItem -Path "resouses/icon" -Recurse | Select-Object FullName, Length
+          } else {
+            Write-Host "resouses/icon not found"
+            exit 1
+          }
+
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
         with:
           linux-packages: ${{ env.LINUX_PACKAGES }}
 
       - name: Cargo build release
-        run: cargo build --release
+        run: cargo build --release -p ame
 
       - name: Prepare raw binary and SHA1
         shell: pwsh
@@ -140,27 +150,27 @@ jobs:
               "categories": [
                 {
                   "title": "✨ Features",
-                  "labels": ["feat"]
+                  "labels": ["feat", "Feat"]
                 },
                 {
                   "title": "🐛 Fixes",
-                  "labels": ["fix"]
+                  "labels": ["fix", "Fix"]
                 },
                 {
                   "title": "♻️ Refactors",
-                  "labels": ["refactor"]
+                  "labels": ["refactor", "Refactor"]
                 },
                 {
                   "title": "⚡ Performance",
-                  "labels": ["perf"]
+                  "labels": ["perf", "Perf"]
                 },
                 {
                   "title": "📝 Docs",
-                  "labels": ["docs"]
+                  "labels": ["docs", "Docs"]
                 },
                 {
                   "title": "🔧 Chore & CI",
-                  "labels": ["chore", "ci"]
+                  "labels": ["chore", "ci", "Chore", "CI"]
                 },
                 {
                   "title": "📦 Other",
@@ -169,35 +179,13 @@ jobs:
               ],
               "label_extractor": [
                 {
-                  "pattern": "^(?i)feat(?:\\([^\\)]*\\))?:",
-                  "target": "feat"
-                },
-                {
-                  "pattern": "^(?i)fix(?:\\([^\\)]*\\))?:",
-                  "target": "fix"
-                },
-                {
-                  "pattern": "^(?i)refactor(?:\\([^\\)]*\\))?:",
-                  "target": "refactor"
-                },
-                {
-                  "pattern": "^(?i)perf(?:\\([^\\)]*\\))?:",
-                  "target": "perf"
-                },
-                {
-                  "pattern": "^(?i)docs?(?:\\([^\\)]*\\))?:",
-                  "target": "docs"
-                },
-                {
-                  "pattern": "^(?i)chore(?:\\([^\\)]*\\))?:",
-                  "target": "chore"
-                },
-                {
-                  "pattern": "^(?i)ci(?:\\([^\\)]*\\))?:",
-                  "target": "ci"
+                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
+                  "flags": "giu",
+                  "target": "$1",
+                  "on_property": "title"
                 }
               ],
-              "commit_template": "- #{{TITLE}} (#{{MERGE_SHA}}) @#{{AUTHOR}}",
+              "commit_template": "- #{{TITLE}} #{{MERGE_SHA}}",
               "sort": {
                 "order": "DESC",
                 "on_property": "mergedAt"
@@ -206,23 +194,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Filter dependabot commits from release notes
-        shell: bash
-        env:
-          CHANGELOG_BODY: ${{ steps.changelog.outputs.changelog }}
-        run: |
-          set -euo pipefail
-          printf '%s\n' "$CHANGELOG_BODY" \
-            | grep -Eiv '([0-9]+\+)?dependabot\[bot\]@users\.noreply\.github\.com|@dependabot\[bot\]' \
-            > release-notes.md || true
-          if [ ! -s release-notes.md ]; then
-            echo "No significant changes." > release-notes.md
-          fi
-
       - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TAG }}
-          body_path: release-notes.md
+          body: ${{ steps.changelog.outputs.changelog }}
           files: dist/*
