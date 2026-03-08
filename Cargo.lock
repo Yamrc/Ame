@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "ame"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ame-audio",
  "ame-core",
@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "ame-audio"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ame-core",
  "audioadapter-buffers",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "ame-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "keyring",
@@ -143,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "ame-netease"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aes",
  "base64",
