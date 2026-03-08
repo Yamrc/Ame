@@ -606,13 +606,13 @@ impl RootView {
         let cookie = self.ensure_auth_cookie(AuthLevel::Guest)?;
         let source_url =
             match player_actions::fetch_track_url_blocking(track_id, Some(cookie.as_str())) {
-            Ok(url) => url,
-            Err(err) => {
-                self.search_error = Some(format!("获取播放地址失败: {err}"));
-                cx.notify();
-                return None;
-            }
-        };
+                Ok(url) => url,
+                Err(err) => {
+                    self.search_error = Some(format!("获取播放地址失败: {err}"));
+                    cx.notify();
+                    return None;
+                }
+            };
 
         self.player.update(cx, |player, _| {
             if let Some(item) = player.queue.get_mut(queue_index) {

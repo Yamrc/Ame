@@ -6,7 +6,8 @@ use ame_netease::api::user::playlist::UserPlaylistRequest;
 use anyhow::{Context as _, Result};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::future::Future;
+
+use crate::action::runtime::block_on;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryPlaylistItem {
@@ -34,18 +35,6 @@ pub struct PlaylistDetailData {
 }
 
 const TRACK_DETAIL_BATCH_SIZE: usize = 200;
-
-fn block_on<F, T, E>(future: F) -> Result<T>
-where
-    F: Future<Output = std::result::Result<T, E>>,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("failed to build temporary tokio runtime")?;
-    Ok(runtime.block_on(future)?)
-}
 
 fn compact_cover_url(raw: Option<&str>, size: u32) -> Option<String> {
     let raw = raw?.trim();
@@ -97,12 +86,7 @@ fn fetch_tracks_by_ids_blocking(track_ids: &[i64], cookie: &str) -> Result<Vec<P
     let ids = track_ids.to_vec();
     let order_ids = ids.clone();
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("failed to build temporary tokio runtime for playlist tracks")?;
-
-    let by_id = runtime.block_on(async move {
+    let by_id = block_on(async move {
         let client = NeteaseClient::with_cookie(cookie);
 
         let mut by_id = HashMap::with_capacity(ids.len());
@@ -117,9 +101,9 @@ fn fetch_tracks_by_ids_blocking(track_ids: &[i64], cookie: &str) -> Result<Vec<P
                 }
             }
         }
-
         Ok::<_, ame_netease::ClientError>(by_id)
-    })?;
+    })
+    .context("failed to fetch full playlist tracks by trackIds")?;
 
     Ok(order_ids
         .into_iter()
@@ -169,7 +153,10 @@ pub fn fetch_top_playlists_blocking(
     let client = NeteaseClient::with_cookie(cookie);
     let response: serde_json::Value =
         block_on(client.weapi_request(PlaylistListRequest::new(limit, offset)))?;
-    let playlists = response["playlists"].as_array().cloned().unwrap_or_default();
+    let playlists = response["playlists"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
 
     Ok(playlists
         .into_iter()
@@ -256,4 +243,3 @@ pub fn fetch_playlist_detail_blocking(
         tracks,
     })
 }
-

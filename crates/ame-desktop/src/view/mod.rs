@@ -1,3 +1,4 @@
+pub mod common;
 pub mod discover;
 pub mod home;
 pub mod library;

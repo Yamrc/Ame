@@ -16,8 +16,8 @@ use ame_core::storage::{AppStorage, SettingsStore, StateStore};
 
 use crate::component::{
     bottom_bar, input,
-    net_image_cache,
     nav_bar::{self, NavBarActions, NavBarModel},
+    net_image_cache,
     scroll::{
         ScrollBarActions, ScrollBarModel, ScrollBarStyle, SmoothScrollConfig, SmoothScrollState,
     },

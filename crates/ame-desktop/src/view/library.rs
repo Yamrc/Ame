@@ -2,6 +2,7 @@ use gpui::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, relati
 
 use crate::component::button;
 use crate::component::theme;
+use crate::view::common;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryPlaylistCard {
@@ -71,46 +72,12 @@ pub fn render(
         ("夕日坂 (Acoustic)", "花たん"),
     ];
 
-    let status = if let Some(error) = error {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child(format!("加载失败: {error}"))
-            .into_any_element()
-    } else if loading {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child("加载中...")
-            .into_any_element()
-    } else {
-        div().into_any_element()
-    };
+    let status = common::status_banner(loading, error, "加载中...", "加载失败");
 
     let playlist_section = if rows.is_empty() {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_CARD_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child("暂无歌单")
-            .into_any_element()
+        common::empty_card("暂无歌单")
     } else {
-        rows.into_iter()
-            .fold(div().w_full().flex().flex_col().gap_2(), |list, row| {
-                list.child(row)
-            })
-            .into_any_element()
+        common::stacked_rows(rows, px(8.))
     };
 
     div()

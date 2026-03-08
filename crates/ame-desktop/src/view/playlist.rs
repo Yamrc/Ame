@@ -1,8 +1,8 @@
 use gpui::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
 
 use crate::component::button;
-
 use crate::component::theme;
+use crate::view::common;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaylistTrackRow {
@@ -105,41 +105,16 @@ pub fn render(
                 .text_color(rgb(theme::COLOR_SECONDARY))
                 .child(subtitle),
         )
-        .child(if let Some(error) = error {
-            div()
-                .w_full()
-                .rounded_lg()
-                .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-                .px_4()
-                .py_3()
-                .text_color(rgb(theme::COLOR_SECONDARY))
-                .child(format!("加载失败: {error}"))
-                .into_any_element()
-        } else if loading {
-            div()
-                .w_full()
-                .rounded_lg()
-                .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-                .px_4()
-                .py_3()
-                .text_color(rgb(theme::COLOR_SECONDARY))
-                .child("加载中...")
-                .into_any_element()
-        } else {
-            div().into_any_element()
-        })
+        .child(common::status_banner(
+            loading,
+            error,
+            "加载中...",
+            "加载失败",
+        ))
         .child(div().w_full().child(if let Some(track_list) = track_list {
-                track_list
-            } else {
-                div()
-                    .w_full()
-                    .rounded_lg()
-                    .bg(rgb(theme::COLOR_CARD_DARK))
-                    .px_4()
-                    .py_3()
-                    .text_color(rgb(theme::COLOR_SECONDARY))
-                    .child("暂无歌曲")
-                    .into_any_element()
-            }))
+            track_list
+        } else {
+            common::empty_card("暂无歌曲")
+        }))
         .into_any_element()
 }

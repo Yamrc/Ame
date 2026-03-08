@@ -43,10 +43,9 @@ impl RootView {
 
         let daily_root = root_entity.clone();
         let daily_playlist_id = playlists.first().map(|item| item.id);
-        rows.push(home::featured_card(
+        rows.push(home::daily_featured_card(
             home::HomePlaylistCard {
                 id: daily_playlist_id.unwrap_or_default(),
-                kind: home::HomeFeaturedKind::Daily,
                 name: "每日推荐歌单".to_string(),
                 subtitle: "根据你的口味更新".to_string(),
                 cover_url: playlists.first().and_then(|item| item.cover_url.clone()),
@@ -67,10 +66,9 @@ impl RootView {
         ));
 
         let fm_root = root_entity.clone();
-        rows.push(home::featured_card(
+        rows.push(home::fm_featured_card(
             home::HomePlaylistCard {
                 id: 0,
-                kind: home::HomeFeaturedKind::Fm,
                 name: "私人 FM".to_string(),
                 subtitle: "连续播放你可能喜欢的音乐".to_string(),
                 cover_url: playlists.get(1).and_then(|item| item.cover_url.clone()),
@@ -104,7 +102,6 @@ impl RootView {
                 home::playlist_card(
                     home::HomePlaylistCard {
                         id: item.id,
-                        kind: home::HomeFeaturedKind::Playlist,
                         name: item.name,
                         subtitle: format!("{} 首 · by {}", item.track_count, item.creator_name),
                         cover_url: item.cover_url,

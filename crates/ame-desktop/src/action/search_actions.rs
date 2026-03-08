@@ -1,7 +1,5 @@
-use ame_netease::NeteaseClient;
 use ame_netease::api::search::song::SearchSongRequest;
-use anyhow::{Context as _, Result};
-use std::future::Future;
+use anyhow::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchSongItem {
@@ -10,17 +8,7 @@ pub struct SearchSongItem {
     pub artists: String,
 }
 
-fn block_on<F, T, E>(future: F) -> Result<T>
-where
-    F: Future<Output = std::result::Result<T, E>>,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("failed to build temporary tokio runtime")?;
-    Ok(runtime.block_on(future)?)
-}
+use crate::action::runtime::{block_on, netease_client};
 
 pub fn search_song_blocking(keyword: &str, cookie: Option<&str>) -> Result<Vec<SearchSongItem>> {
     let keyword = keyword.trim();
@@ -28,9 +16,7 @@ pub fn search_song_blocking(keyword: &str, cookie: Option<&str>) -> Result<Vec<S
         return Ok(Vec::new());
     }
 
-    let client = cookie
-        .filter(|cookie| !cookie.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
+    let client = netease_client(cookie);
     let response: serde_json::Value =
         block_on(client.weapi_request(SearchSongRequest::new(keyword)))?;
     let songs = response["result"]["songs"]

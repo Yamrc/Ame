@@ -5,29 +5,28 @@ use crate::component::{
     icon::{self, IconName},
     theme,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HomeFeaturedKind {
-    Daily,
-    Fm,
-    Playlist,
-}
+use crate::view::common;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HomePlaylistCard {
     pub id: i64,
-    pub kind: HomeFeaturedKind,
     pub name: String,
     pub subtitle: String,
     pub cover_url: Option<String>,
 }
 
-pub fn featured_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
-    match item.kind {
-        HomeFeaturedKind::Daily => featured_daily_card(item, on_open),
-        HomeFeaturedKind::Fm => featured_fm_card(item, on_open),
-        HomeFeaturedKind::Playlist => featured_daily_card(item, on_open),
-    }
+pub fn daily_featured_card(
+    item: HomePlaylistCard,
+    on_open: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    featured_daily_card(item, on_open)
+}
+
+pub fn fm_featured_card(
+    item: HomePlaylistCard,
+    on_open: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    featured_fm_card(item, on_open)
 }
 
 fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
@@ -75,7 +74,7 @@ fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'sta
                         .items_center()
                         .line_height(px(52.))
                         .children(["每", "日", "推", "荐"]),
-                )
+                ),
         )
         .child(
             div()
@@ -200,12 +199,14 @@ fn icon_button(icon_name: IconName) -> AnyElement {
 
     button::icon_interactive(
         format!("home-fm-icon-{icon_name:?}"),
-        button::icon_base(style)
-            .size(px(34.))
-            .child(icon::render(icon_name, 18.0, theme::COLOR_TEXT_DARK)),
+        button::icon_base(style).size(px(34.)).child(icon::render(
+            icon_name,
+            18.0,
+            theme::COLOR_TEXT_DARK,
+        )),
         style,
     )
-        .into_any_element()
+    .into_any_element()
 }
 
 pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
@@ -253,29 +254,7 @@ pub fn render(
     featured_rows: Vec<AnyElement>,
     playlist_rows: Vec<AnyElement>,
 ) -> AnyElement {
-    let status = if let Some(error) = error {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child(format!("加载失败: {error}"))
-            .into_any_element()
-    } else if loading {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child("加载中...")
-            .into_any_element()
-    } else {
-        div().into_any_element()
-    };
+    let status = common::status_banner(loading, error, "加载中...", "加载失败");
 
     let featured = if featured_rows.is_empty() {
         div()
@@ -290,9 +269,10 @@ pub fn render(
     } else {
         featured_rows
             .into_iter()
-            .fold(div().w_full().grid().grid_cols(2).gap(px(20.)), |col, item| {
-                col.child(item)
-            })
+            .fold(
+                div().w_full().grid().grid_cols(2).gap(px(20.)),
+                |col, item| col.child(item),
+            )
             .into_any_element()
     };
 
@@ -309,9 +289,10 @@ pub fn render(
     } else {
         playlist_rows
             .into_iter()
-            .fold(div().w_full().grid().grid_cols(5).gap(px(18.)), |grid, item| {
-                grid.child(item)
-            })
+            .fold(
+                div().w_full().grid().grid_cols(5).gap(px(18.)),
+                |grid, item| grid.child(item),
+            )
             .into_any_element()
     };
 
@@ -320,18 +301,10 @@ pub fn render(
         .flex()
         .flex_col()
         .pt(px(28.))
-        .child(
-            div()
-                .text_size(px(56.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgb(theme::COLOR_TEXT_DARK))
-                .child("首页"),
-        )
         .child(div().w_full().mt(px(12.)).child(status))
         .child(
             div()
                 .w_full()
-                .mt(px(20.))
                 .mb(px(22.))
                 .text_size(px(26.))
                 .font_weight(FontWeight::BOLD)

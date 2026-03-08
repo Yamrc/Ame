@@ -1,20 +1,8 @@
-use ame_netease::NeteaseClient;
 use ame_netease::api::track::detail::TrackDetailRequest;
 use ame_netease::api::track::url::TrackUrlRequest;
 use anyhow::{Context as _, Result};
-use std::future::Future;
 
-fn block_on<F, T, E>(future: F) -> Result<T>
-where
-    F: Future<Output = std::result::Result<T, E>>,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("failed to build temporary tokio runtime")?;
-    Ok(runtime.block_on(future)?)
-}
+use crate::action::runtime::{block_on, netease_client};
 
 fn compact_cover_url(raw: Option<&str>, size: u32) -> Option<String> {
     let raw = raw?.trim();
@@ -29,9 +17,7 @@ fn compact_cover_url(raw: Option<&str>, size: u32) -> Option<String> {
 }
 
 pub fn fetch_track_url_blocking(track_id: i64, cookie: Option<&str>) -> Result<String> {
-    let client = cookie
-        .filter(|cookie| !cookie.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
+    let client = netease_client(cookie);
     let response: serde_json::Value = block_on(client.eapi_request(TrackUrlRequest::with_level(
         vec![track_id],
         "jymaster".to_string(),
@@ -53,9 +39,7 @@ pub struct TrackMetadata {
 }
 
 pub fn fetch_track_metadata_blocking(track_id: i64, cookie: Option<&str>) -> Result<TrackMetadata> {
-    let client = cookie
-        .filter(|cookie| !cookie.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
+    let client = netease_client(cookie);
     let response: serde_json::Value =
         block_on(client.weapi_request(TrackDetailRequest::new(vec![track_id])))?;
 

@@ -78,7 +78,8 @@ impl ImageCache for LruImageCache {
         let fut = AssetLogger::<ImageAssetLoader>::load(resource.clone(), cx);
         let task = cx.background_executor().spawn(fut).shared();
 
-        self.items.insert(key, ImageCacheItem::Loading(task.clone()));
+        self.items
+            .insert(key, ImageCacheItem::Loading(task.clone()));
         self.touch(key);
         self.evict_to_budget(window, cx);
 

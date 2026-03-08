@@ -1,6 +1,7 @@
 use gpui::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb};
 
 use crate::component::{button, theme};
+use crate::view::common;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoverPlaylistCard {
@@ -60,7 +61,7 @@ pub fn playlist_card(
                                     item.track_count, item.creator_name
                                 )),
                         ),
-                )
+                ),
         )
         .child(
             button::pill_base("打开").on_mouse_down(MouseButton::Left, move |_, _, cx| {
@@ -71,29 +72,7 @@ pub fn playlist_card(
 }
 
 pub fn render(loading: bool, error: Option<&str>, rows: Vec<AnyElement>) -> AnyElement {
-    let status = if let Some(error) = error {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child(format!("加载失败: {error}"))
-            .into_any_element()
-    } else if loading {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_SECONDARY_BG_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child("加载中...")
-            .into_any_element()
-    } else {
-        div().into_any_element()
-    };
+    let status = common::status_banner(loading, error, "加载中...", "加载失败");
 
     let playlist_section = if rows.is_empty() {
         div()
@@ -105,11 +84,7 @@ pub fn render(loading: bool, error: Option<&str>, rows: Vec<AnyElement>) -> AnyE
             .child("暂无推荐内容")
             .into_any_element()
     } else {
-        rows.into_iter()
-            .fold(div().w_full().flex().flex_col().gap_2(), |list, row| {
-                list.child(row)
-            })
-            .into_any_element()
+        common::stacked_rows(rows, px(8.))
     };
 
     div()

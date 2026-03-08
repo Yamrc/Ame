@@ -5,9 +5,10 @@ use ame_netease::api::user::login_qr_key::LoginQrKeyRequest;
 use ame_netease::api::user::login_refresh::LoginRefreshRequest;
 use ame_netease::api::user::register_anonymous::RegisterAnonymousRequest;
 use ame_netease::api::user::status::LoginStatusRequest;
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use serde_json::Value;
-use std::future::Future;
+
+use crate::action::runtime::{block_on, netease_client};
 
 const MUSIC_U: &str = "MUSIC_U";
 const MUSIC_A: &str = "MUSIC_A";
@@ -18,18 +19,6 @@ const MUSIC_R_T: &str = "MUSIC_R_T";
 pub struct ResponseWithCookies {
     pub body: Value,
     pub set_cookie: Vec<String>,
-}
-
-fn block_on<F, T, E>(future: F) -> Result<T>
-where
-    F: Future<Output = std::result::Result<T, E>>,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("failed to build temporary tokio runtime")?;
-    Ok(runtime.block_on(future)?)
 }
 
 pub fn build_cookie_header(bundle: &AuthBundle) -> Option<String> {
@@ -73,25 +62,15 @@ pub fn merge_bundle_from_set_cookie(bundle: &mut AuthBundle, set_cookie: &[Strin
 }
 
 pub fn fetch_login_qr_key_blocking(cookie: Option<&str>) -> Result<ResponseWithCookies> {
-    let client = cookie
-        .filter(|it| !it.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
-
+    let client = netease_client(cookie);
     let body = block_on(client.eapi_request(LoginQrKeyRequest))?;
-    let mut set_cookie = client.take_last_set_cookie();
-    set_cookie.extend(extract_cookie_from_body(&body));
-    Ok(ResponseWithCookies { body, set_cookie })
+    Ok(response_with_cookies(&client, body))
 }
 
 pub fn check_login_qr_blocking(key: &str, cookie: Option<&str>) -> Result<ResponseWithCookies> {
-    let client = cookie
-        .filter(|it| !it.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
-
+    let client = netease_client(cookie);
     let body = block_on(client.eapi_request(LoginQrCheckRequest::new(key)))?;
-    let mut set_cookie = client.take_last_set_cookie();
-    set_cookie.extend(extract_cookie_from_body(&body));
-    Ok(ResponseWithCookies { body, set_cookie })
+    Ok(response_with_cookies(&client, body))
 }
 
 pub fn register_anonymous_blocking(cookie: Option<&str>) -> Result<ResponseWithCookies> {
@@ -110,20 +89,14 @@ pub fn register_anonymous_blocking(cookie: Option<&str>) -> Result<ResponseWithC
 }
 
 pub fn fetch_login_status_blocking(cookie: Option<&str>) -> Result<Value> {
-    let client = cookie
-        .filter(|it| !it.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
+    let client = netease_client(cookie);
     block_on(client.weapi_request(LoginStatusRequest))
 }
 
 pub fn refresh_login_token_blocking(cookie: Option<&str>) -> Result<ResponseWithCookies> {
-    let client = cookie
-        .filter(|it| !it.trim().is_empty())
-        .map_or_else(NeteaseClient::new, NeteaseClient::with_cookie);
+    let client = netease_client(cookie);
     let body = block_on(client.eapi_request(LoginRefreshRequest))?;
-    let mut set_cookie = client.take_last_set_cookie();
-    set_cookie.extend(extract_cookie_from_body(&body));
-    Ok(ResponseWithCookies { body, set_cookie })
+    Ok(response_with_cookies(&client, body))
 }
 
 pub fn login_summary_text(value: &Value) -> Option<String> {
@@ -163,6 +136,12 @@ fn extract_cookie_from_body(body: &Value) -> Vec<String> {
             .collect();
     }
     Vec::new()
+}
+
+fn response_with_cookies(client: &NeteaseClient, body: Value) -> ResponseWithCookies {
+    let mut set_cookie = client.take_last_set_cookie();
+    set_cookie.extend(extract_cookie_from_body(&body));
+    ResponseWithCookies { body, set_cookie }
 }
 
 #[cfg(test)]
