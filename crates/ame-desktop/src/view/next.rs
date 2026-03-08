@@ -48,7 +48,7 @@ pub fn queue_row(
 pub fn render(
     current_track: Option<QueueItem>,
     clear_button: Option<AnyElement>,
-    queue_rows: Vec<AnyElement>,
+    queue_list: Option<AnyElement>,
 ) -> AnyElement {
     let now_playing = if let Some(track) = current_track {
         div()
@@ -79,7 +79,7 @@ pub fn render(
             .into_any_element()
     };
 
-    let queue_list = if queue_rows.is_empty() {
+    let queue_list = queue_list.unwrap_or_else(|| {
         div()
             .w_full()
             .rounded_lg()
@@ -89,14 +89,7 @@ pub fn render(
             .text_color(rgb(theme::COLOR_SECONDARY))
             .child("暂无待播放队列")
             .into_any_element()
-    } else {
-        queue_rows
-            .into_iter()
-            .fold(div().w_full().flex().flex_col().gap_2(), |list, row| {
-                list.child(row)
-            })
-            .into_any_element()
-    };
+    });
 
     let next_header = div()
         .w_full()

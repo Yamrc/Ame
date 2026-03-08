@@ -55,6 +55,9 @@ impl RootView {
             AppCommand::OpenLibraryPlaylist(playlist_id) => {
                 self.open_playlist_from_library(playlist_id, cx)
             }
+            AppCommand::ReplaceQueueFromPlaylist(playlist_id) => {
+                self.replace_queue_from_playlist(playlist_id, cx)
+            }
             AppCommand::EnqueueSongAndPlay(song) => {
                 self.enqueue_song_from_route(song_input_to_search_song(song), cx)
             }
@@ -364,47 +367,54 @@ impl RootView {
         self.discover_loading = false;
     }
 
+    fn build_playlist_page_from_remote(
+        &mut self,
+        playlist_id: i64,
+    ) -> Result<playlist::PlaylistPage, String> {
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            return Err("缺少鉴权凭据".to_string());
+        };
+        let detail = library_actions::fetch_playlist_detail_blocking(playlist_id, cookie.as_str())
+            .map_err(|err| err.to_string())?;
+        Ok(playlist::PlaylistPage {
+            id: detail.id,
+            name: detail.name,
+            creator_name: detail.creator_name,
+            track_count: detail.track_count,
+            tracks: detail
+                .tracks
+                .into_iter()
+                .map(|track| playlist::PlaylistTrackRow {
+                    id: track.id,
+                    name: track.name,
+                    artists: track.artists,
+                })
+                .collect(),
+        })
+    }
+
+    fn ensure_playlist_page_loaded(
+        &mut self,
+        playlist_id: i64,
+    ) -> Result<playlist::PlaylistPage, String> {
+        if let Some(page) = self.playlist_pages.get(&playlist_id).cloned() {
+            return Ok(page);
+        }
+
+        let page = self.build_playlist_page_from_remote(playlist_id)?;
+        self.playlist_pages.insert(playlist_id, page.clone());
+        Ok(page)
+    }
+
     pub(super) fn open_playlist_from_library(&mut self, playlist_id: i64, cx: &mut Context<Self>) {
         Self::navigate_to(format!("/playlist/{playlist_id}"), cx);
-        if self.playlist_pages.contains_key(&playlist_id) {
-            self.playlist_loading = false;
-            self.playlist_error = None;
-            cx.notify();
-            return;
-        }
 
         self.playlist_loading = true;
         self.playlist_error = None;
         cx.notify();
 
-        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
-            self.playlist_loading = false;
-            self.playlist_error = Some("缺少鉴权凭据".to_string());
-            cx.notify();
-            return;
-        };
-        match library_actions::fetch_playlist_detail_blocking(playlist_id, cookie.as_str()) {
-            Ok(detail) => {
-                let page = playlist::PlaylistPage {
-                    id: detail.id,
-                    name: detail.name,
-                    creator_name: detail.creator_name,
-                    track_count: detail.track_count,
-                    tracks: detail
-                        .tracks
-                        .into_iter()
-                        .map(|track| playlist::PlaylistTrackRow {
-                            id: track.id,
-                            name: track.name,
-                            artists: track.artists,
-                        })
-                        .collect(),
-                };
-                self.playlist_pages.insert(playlist_id, page);
-            }
-            Err(err) => {
-                self.playlist_error = Some(err.to_string());
-            }
+        if let Err(err) = self.ensure_playlist_page_loaded(playlist_id) {
+            self.playlist_error = Some(err);
         }
 
         self.playlist_loading = false;
@@ -744,6 +754,11 @@ impl RootView {
         song: search::SearchSong,
         cx: &mut Context<Self>,
     ) {
+        if let Some(existing_index) = queue_actions::index_of(self.player.read(cx), song.id) {
+            self.start_playback_at(existing_index, 0, true, cx);
+            return;
+        }
+
         let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
             return;
         };
@@ -755,6 +770,7 @@ impl RootView {
             .unwrap_or_else(|| song.artists.clone());
         let cover_url = metadata.and_then(|meta| meta.cover_url);
 
+        let mut inserted_index = None;
         self.player.update(cx, |player, _| {
             player.enqueue(QueueItem {
                 id: song.id,
@@ -763,11 +779,11 @@ impl RootView {
                 cover_url,
                 source_url: None,
             });
-            player.current_index = player.queue.len().checked_sub(1);
+            inserted_index = player.queue.len().checked_sub(1);
+            player.current_index = inserted_index;
         });
 
-        let current_index = self.player.read(cx).current_index;
-        if let Some(index) = current_index {
+        if let Some(index) = inserted_index {
             self.start_playback_at(index, 0, true, cx);
         } else {
             self.persist_player_runtime(cx);
@@ -779,6 +795,11 @@ impl RootView {
         song: search::SearchSong,
         cx: &mut Context<Self>,
     ) {
+        if let Some(existing_index) = queue_actions::index_of(self.player.read(cx), song.id) {
+            self.start_playback_at(existing_index, 0, true, cx);
+            return;
+        }
+
         let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
             return;
         };
@@ -803,9 +824,46 @@ impl RootView {
         cx.notify();
     }
 
+    pub(super) fn replace_queue_from_playlist(&mut self, playlist_id: i64, cx: &mut Context<Self>) {
+        let page = match self.ensure_playlist_page_loaded(playlist_id) {
+            Ok(page) => page,
+            Err(err) => {
+                Self::push_error(&mut self.search_error, format!("替换队列失败: {err}"));
+                return;
+            }
+        };
+        if page.tracks.is_empty() {
+            Self::push_error(&mut self.search_error, "歌单为空，无法替换队列".to_string());
+            return;
+        }
+
+        self.player.update(cx, |player, _| {
+            player.set_queue(
+                page.tracks
+                    .iter()
+                    .map(|track| QueueItem {
+                        id: track.id,
+                        name: track.name.clone(),
+                        artist: track.artists.clone(),
+                        cover_url: None,
+                        source_url: None,
+                    })
+                    .collect(),
+            );
+            player.current_index = Some(0);
+            player.position_ms = 0;
+            player.duration_ms = 0;
+        });
+
+        if !self.start_playback_at(0, 0, true, cx) {
+            self.persist_player_runtime(cx);
+            self.persist_player_progress(cx);
+            cx.notify();
+        }
+    }
+
     pub(super) fn play_queue_item_from_route(&mut self, track_id: i64, cx: &mut Context<Self>) {
-        let current = self.player.read(cx).clone();
-        let Some(index) = current.queue.iter().position(|item| item.id == track_id) else {
+        let Some(index) = queue_actions::index_of(self.player.read(cx), track_id) else {
             return;
         };
         self.start_playback_at(index, 0, true, cx);

@@ -309,41 +309,62 @@ impl RootView {
             .child(Route::new().path("next").element({
                 let player_entity = player_entity.clone();
                 let root_entity = root_entity.clone();
+                let page_scroll_handle = page_scroll_handle.clone();
                 move |_, cx| {
                     let player_snapshot = player_entity.read(cx).clone();
                     let current_track = player_snapshot.current_item().cloned();
                     let current_index = player_snapshot.current_index.unwrap_or(0);
-
-                    let queue_rows = player_snapshot
+                    let upcoming = player_snapshot
                         .queue
                         .iter()
                         .enumerate()
                         .filter(|(index, _)| *index > current_index)
                         .map(|(_, item)| item.clone())
-                        .map(|item| {
-                            let play_root_entity = root_entity.clone();
-                            let remove_root_entity = root_entity.clone();
-                            let item_id = item.id;
+                        .collect::<Vec<_>>();
 
-                            next::queue_row(
-                                item,
-                                move |cx| {
-                                    play_root_entity.update(cx, |this, _| {
-                                        this.queue_kernel_command(AppCommand::PlayQueueItem(
-                                            item_id,
+                    let queue_list = if upcoming.is_empty() {
+                        None
+                    } else {
+                        let upcoming = Arc::new(upcoming);
+                        let heights = Arc::new(vec![px(88.); upcoming.len()]);
+                        let root_for_list = root_entity.clone();
+                        let list = virtual_list::v_virtual_list(
+                            ("next-queue", upcoming.len()),
+                            heights,
+                            move |visible_range, _, _| {
+                                visible_range
+                                    .map(|index| {
+                                        let item = upcoming[index].clone();
+                                        let play_root_entity = root_for_list.clone();
+                                        let remove_root_entity = root_for_list.clone();
+                                        let item_id = item.id;
+                                        gpui::div().pb(px(8.)).child(next::queue_row(
+                                            item,
+                                            move |cx| {
+                                                play_root_entity.update(cx, |this, _| {
+                                                    this.queue_kernel_command(
+                                                        AppCommand::PlayQueueItem(item_id),
+                                                    )
+                                                });
+                                            },
+                                            move |cx| {
+                                                remove_root_entity.update(cx, |this, _| {
+                                                    this.queue_kernel_command(
+                                                        AppCommand::RemoveQueueItem(item_id),
+                                                    )
+                                                });
+                                            },
                                         ))
-                                    });
-                                },
-                                move |cx| {
-                                    remove_root_entity.update(cx, |this, _| {
-                                        this.queue_kernel_command(AppCommand::RemoveQueueItem(
-                                            item_id,
-                                        ))
-                                    });
-                                },
-                            )
-                        })
-                        .collect();
+                                    })
+                                    .collect::<Vec<_>>()
+                            },
+                        )
+                        .with_external_viewport_scroll(&page_scroll_handle)
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .with_overscan(2)
+                        .w_full();
+                        Some(list.into_any_element())
+                    };
 
                     let clear_button = if player_snapshot.queue.is_empty() {
                         None
@@ -360,13 +381,14 @@ impl RootView {
                         )
                     };
 
-                    next::render(current_track, clear_button, queue_rows)
+                    next::render(current_track, clear_button, queue_list)
                 }
             }))
             .child(Route::new().path("playlist/{id}").element({
                 let root_entity = root_entity.clone();
                 let playlist_pages = playlist_pages.clone();
                 let playlist_error = playlist_error.clone();
+                let page_scroll_handle = page_scroll_handle.clone();
                 move |_, cx| {
                     let params = use_params(cx);
                     let playlist_id = params
@@ -432,6 +454,23 @@ impl RootView {
                         .w_full();
                         Some(list.into_any_element())
                     });
+                    let replace_queue_button = playlist_page.as_ref().and_then(|page| {
+                        if page.tracks.is_empty() {
+                            return None;
+                        }
+                        let root_for_replace = root_entity.clone();
+                        Some(
+                            button::primary_pill("替换队列并播放")
+                                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                                    root_for_replace.update(cx, |this, _| {
+                                        this.queue_kernel_command(
+                                            AppCommand::ReplaceQueueFromPlaylist(playlist_id_num),
+                                        )
+                                    });
+                                })
+                                .into_any_element(),
+                        )
+                    });
 
                     playlist::render(
                         &playlist_id,
@@ -439,6 +478,7 @@ impl RootView {
                         playlist_error.as_deref(),
                         playlist_page.as_ref(),
                         playlist_rows,
+                        replace_queue_button,
                     )
                 }
             }))

@@ -21,6 +21,7 @@ pub enum AppCommand {
     RefreshLoginToken,
     SetCloseBehavior(CloseBehavior),
     OpenLibraryPlaylist(i64),
+    ReplaceQueueFromPlaylist(i64),
     EnqueueSongAndPlay(SongInput),
     EnqueueSongOnly(SongInput),
     PlayQueueItem(i64),

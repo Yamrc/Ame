@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +27,7 @@ pub struct PlayerEntity {
     pub volume: f32,
     pub position_ms: u64,
     pub duration_ms: u64,
+    queue_index_by_id: HashMap<i64, usize>,
     shuffle_seed: u64,
 }
 
@@ -38,6 +41,7 @@ impl Default for PlayerEntity {
             volume: 0.7,
             position_ms: 0,
             duration_ms: 180_000,
+            queue_index_by_id: HashMap::new(),
             shuffle_seed: 0x9E37_79B9_7F4A_7C15,
         }
     }
@@ -52,15 +56,59 @@ impl PlayerEntity {
     }
 
     pub fn enqueue(&mut self, item: QueueItem) {
+        let next_index = self.queue.len();
+        self.queue_index_by_id.insert(item.id, next_index);
         self.queue.push(item);
         if self.current_index.is_none() {
             self.current_index = Some(0);
         }
     }
 
+    pub fn index_of_id(&self, id: i64) -> Option<usize> {
+        let index = *self.queue_index_by_id.get(&id)?;
+        self.queue
+            .get(index)
+            .and_then(|item| (item.id == id).then_some(index))
+    }
+
+    pub fn remove_at(&mut self, index: usize) {
+        if index >= self.queue.len() {
+            return;
+        }
+
+        self.queue.remove(index);
+        match self.current_index {
+            Some(_) if self.queue.is_empty() => self.current_index = None,
+            Some(current) if current > index => self.current_index = Some(current - 1),
+            Some(current) if current == index && current >= self.queue.len() => {
+                self.current_index = self.queue.len().checked_sub(1);
+            }
+            _ => {}
+        }
+        self.rebuild_queue_index();
+    }
+
+    pub fn set_queue(&mut self, queue: Vec<QueueItem>) {
+        self.queue = queue;
+        self.current_index = self
+            .current_index
+            .and_then(|index| (index < self.queue.len()).then_some(index))
+            .or_else(|| (!self.queue.is_empty()).then_some(0));
+        self.rebuild_queue_index();
+    }
+
+    pub fn rebuild_queue_index(&mut self) {
+        self.queue_index_by_id.clear();
+        self.queue_index_by_id.reserve(self.queue.len());
+        for (index, item) in self.queue.iter().enumerate() {
+            self.queue_index_by_id.entry(item.id).or_insert(index);
+        }
+    }
+
     pub fn clear(&mut self) {
         self.queue.clear();
         self.current_index = None;
+        self.queue_index_by_id.clear();
     }
 
     pub fn cycle_mode(&mut self) {

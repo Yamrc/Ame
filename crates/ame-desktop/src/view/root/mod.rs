@@ -170,16 +170,18 @@ impl RootView {
         if let Some(state) = state_store.as_ref() {
             match state.get::<Vec<PersistedQueueItem>>(KEY_PLAYER_QUEUE) {
                 Ok(Some(queue)) => {
-                    player_state.queue = queue
-                        .into_iter()
-                        .map(|item| QueueItem {
-                            id: item.id,
-                            name: item.name,
-                            artist: item.artist,
-                            cover_url: item.cover_url,
-                            source_url: None,
-                        })
-                        .collect();
+                    player_state.set_queue(
+                        queue
+                            .into_iter()
+                            .map(|item| QueueItem {
+                                id: item.id,
+                                name: item.name,
+                                artist: item.artist,
+                                cover_url: item.cover_url,
+                                source_url: None,
+                            })
+                            .collect(),
+                    );
                 }
                 Ok(None) => {}
                 Err(err) => {

@@ -78,6 +78,7 @@ pub fn render(
     error: Option<&str>,
     playlist: Option<&PlaylistPage>,
     track_list: Option<AnyElement>,
+    replace_queue_button: Option<AnyElement>,
 ) -> AnyElement {
     let title = playlist
         .map(|item| item.name.clone())
@@ -94,10 +95,18 @@ pub fn render(
         .gap_5()
         .child(
             div()
-                .text_size(px(38.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgb(theme::COLOR_TEXT_DARK))
-                .child(title),
+                .w_full()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(
+                    div()
+                        .text_size(px(38.))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(rgb(theme::COLOR_TEXT_DARK))
+                        .child(title),
+                )
+                .child(replace_queue_button.unwrap_or_else(|| div().into_any_element())),
         )
         .child(
             div()
