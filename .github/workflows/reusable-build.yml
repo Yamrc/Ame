@@ -1,0 +1,184 @@
+name: Reusable Build
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Optional git ref to checkout.
+        required: false
+        type: string
+        default: ""
+      include_installers:
+        description: Build installer packages in addition to portable binaries.
+        required: false
+        type: boolean
+        default: false
+      include_sha1:
+        description: Generate SHA1 files for all built artifacts.
+        required: false
+        type: boolean
+        default: false
+      artifact_prefix:
+        description: Prefix used for uploaded artifact names.
+        required: false
+        type: string
+        default: ame
+
+permissions:
+  contents: read
+
+env:
+  LINUX_PACKAGES: pkg-config libdbus-1-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_suffix: linux-x86_64
+            bin_name: ame
+            portable_name: ame-linux-x86_64
+            installer_name: ame-linux-x86_64.deb
+            installer_glob: ame-linux-x86_64.deb
+          - os: windows-latest
+            artifact_suffix: windows-x86_64
+            bin_name: ame.exe
+            portable_name: ame-windows-x86_64.exe
+            installer_name: ame-windows-x86_64-en-US.msi
+            installer_glob: ame-windows-x86_64-*.msi
+          - os: macos-latest
+            artifact_suffix: macos-arm64
+            bin_name: ame
+            portable_name: ame-macos-arm64
+            installer_name: ame-macos-arm64.pkg
+            installer_glob: ame-macos-arm64.pkg
+
+    steps:
+      - name: Checkout (default ref)
+        if: inputs.checkout_ref == ''
+        uses: actions/checkout@v4
+
+      - name: Checkout (specific ref)
+        if: inputs.checkout_ref != ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
+        with:
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: Cargo build release
+        run: cargo build --release -p ame
+
+      - name: Resolve app version
+        if: inputs.include_installers
+        shell: pwsh
+        run: |
+          $version = ((cargo pkgid -p ame).Trim() -replace '.*@', '')
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare portable package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/release/${{ matrix.bin_name }}" "dist/${{ matrix.portable_name }}"
+
+      - name: Build DEB installer
+        if: inputs.include_installers && runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist/pkgroot
+          mkdir -p dist/pkgroot/DEBIAN dist/pkgroot/usr/bin
+          install -m 0755 target/release/ame dist/pkgroot/usr/bin/ame
+          cat > dist/pkgroot/DEBIAN/control <<EOF
+          Package: ame
+          Version: ${APP_VERSION}
+          Section: sound
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Yamrc <yamrci@outlook.com>
+          Description: Ame music client
+          EOF
+          dpkg-deb --build dist/pkgroot "dist/${{ matrix.installer_name }}"
+
+      - name: Build MSI installer
+        if: inputs.include_installers && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install wixtoolset --yes --no-progress
+          $sourceExe = (Resolve-Path "target/release/ame.exe").Path
+          $wixobj = "$env:RUNNER_TEMP/ame.wixobj"
+          candle.exe -ext WixUIExtension "-dSourceExe=$sourceExe" "-dProductVersion=$env:APP_VERSION" -out "$wixobj" "packaging/windows/ame.wxs"
+          light.exe -ext WixUIExtension -loc "packaging/windows/en-us.wxl" -out "dist/ame-windows-x86_64-en-US.msi" "$wixobj"
+          light.exe -ext WixUIExtension -loc "packaging/windows/zh-cn.wxl" -out "dist/ame-windows-x86_64-zh-CN.msi" "$wixobj"
+
+      - name: Build PKG installer
+        if: inputs.include_installers && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist/pkgroot
+          mkdir -p dist/pkgroot/usr/local/bin
+          install -m 0755 target/release/ame dist/pkgroot/usr/local/bin/ame
+          pkgbuild \
+            --root dist/pkgroot \
+            --identifier com.yamrc.ame \
+            --version "${APP_VERSION}" \
+            --install-location / \
+            "dist/${{ matrix.installer_name }}"
+
+      - name: Generate SHA1 files
+        if: inputs.include_sha1
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path dist -File | Where-Object { $_.Name -notlike "*.sha1" } | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA1).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha1" -Encoding ascii
+          }
+
+      - name: Upload portable artifact
+        if: ${{ !inputs.include_installers && !inputs.include_sha1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
+          path: dist/${{ matrix.portable_name }}
+          if-no-files-found: error
+
+      - name: Upload portable artifact with SHA1
+        if: ${{ !inputs.include_installers && inputs.include_sha1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
+          path: |
+            dist/${{ matrix.portable_name }}
+            dist/${{ matrix.portable_name }}.sha1
+          if-no-files-found: error
+
+      - name: Upload full artifact set
+        if: ${{ inputs.include_installers && inputs.include_sha1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
+          path: |
+            dist/${{ matrix.portable_name }}
+            dist/${{ matrix.portable_name }}.sha1
+            dist/${{ matrix.installer_glob }}
+            dist/*.sha1
+          if-no-files-found: error
+
+      - name: Upload full artifact set without SHA1
+        if: ${{ inputs.include_installers && !inputs.include_sha1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
+          path: |
+            dist/${{ matrix.portable_name }}
+            dist/${{ matrix.installer_glob }}
+          if-no-files-found: error

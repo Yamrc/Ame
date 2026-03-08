@@ -34,47 +34,8 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
 
   build:
-    name: Build ${{ matrix.os }}
     needs: lint
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact_suffix: linux-x86_64
-            bin_name: ame
-            portable_name: ame-linux-x86_64
-          - os: windows-latest
-            artifact_suffix: windows-x86_64
-            bin_name: ame.exe
-            portable_name: ame-windows-x86_64.exe
-          - os: macos-latest
-            artifact_suffix: macos-arm64
-            bin_name: ame
-            portable_name: ame-macos-arm64
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust environment
-        uses: ./.github/actions/rust-setup
-        with:
-          linux-packages: ${{ env.LINUX_PACKAGES }}
-
-      - name: Cargo build release
-        run: cargo build --release -p ame
-
-      - name: Prepare portable package
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/release/${{ matrix.bin_name }}" "dist/${{ matrix.portable_name }}"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ame-${{ matrix.artifact_suffix }}
-          path: dist/${{ matrix.portable_name }}
-          if-no-files-found: error
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      include_installers: false
+      include_sha1: false
