@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use redb::{Database, TableDefinition};
+use redb::{Database, ReadableDatabase, TableDefinition};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -160,7 +160,8 @@ fn get_json<T: DeserializeOwned>(
     let Some(raw) = bucket.get(key).map_err(storage_err)? else {
         return Ok(None);
     };
-    Ok(Some(serde_json::from_slice(raw.value())?))
+    let payload: &[u8] = raw.value();
+    Ok(Some(serde_json::from_slice(payload)?))
 }
 
 fn remove_value(db: &Database, table: TableDefinition<&str, &[u8]>, key: &str) -> Result<()> {
