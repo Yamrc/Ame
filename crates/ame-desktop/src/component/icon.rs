@@ -1,4 +1,4 @@
-use gpui::{IntoElement, prelude::*, px, rgb, svg};
+use nekowg::{IntoElement, prelude::*, px, rgb, svg};
 
 #[derive(Clone, Copy, Debug)]
 pub enum IconName {

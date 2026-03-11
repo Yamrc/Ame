@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui::{
+use nekowg::{
     AnyElement, App, Div, FontWeight, MouseButton, SharedString, Window, WindowControlArea, div,
     prelude::*, px, rgb, rgba,
 };

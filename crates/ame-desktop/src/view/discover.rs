@@ -1,6 +1,7 @@
-use gpui::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb};
+use nekowg::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb};
 
 use crate::component::{button, theme};
+use crate::util::url::image_resize_url;
 use crate::view::common;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +32,8 @@ pub fn playlist_card(
                 .items_center()
                 .gap(px(12.))
                 .child(match item.cover_url.clone() {
-                    Some(url) => img(url)
+                    Some(url) => img(image_resize_url(&url, "256y256"))
+                        .id(format!("discover-playlist-cover-{}", &url))
                         .size(px(58.))
                         .rounded_md()
                         .overflow_hidden()

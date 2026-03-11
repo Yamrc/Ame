@@ -3,7 +3,6 @@ pub mod button;
 pub mod icon;
 pub mod input;
 pub mod nav_bar;
-pub mod net_image_cache;
 pub mod scroll;
 pub mod slider;
 pub mod theme;

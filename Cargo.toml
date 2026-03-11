@@ -32,10 +32,7 @@ cbc = "0.1.2"
 cpal = "0.17.1"
 dirs = "6.0.0"
 futures = "0.3.31"
-gpui = "0.2.2"
-gpui-animation = "0.2.4"
-gpui-router = "0.3.0"
-gpui-tray = { git = "https://github.com/Yamrc/gpui-tray.git", version = "0.3.1" }
+nekowg-tray = { git = "https://github.com/Yamrc/nekowg-tray.git" }
 hex = "0.4.3"
 keyring = { version = "3.6.3", features = [
     "windows-native",
@@ -47,6 +44,11 @@ symphonia = { version = "0.5.5", default-features = false }
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"]}
 redb = "3.1.1"
 md-5 = "0.10.6"
+nekowg = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master" }
+nekowg_platform = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master" }
+dashmap = "6.1.0"
+parking_lot = "0.12.5"
+smol = "2.0.2"
 num-bigint = "0.4.6"
 rand = "0.10.0"
 reqwest = "0.13.1"

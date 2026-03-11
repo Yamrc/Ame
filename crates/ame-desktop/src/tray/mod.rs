@@ -2,8 +2,8 @@ mod actions;
 
 pub use actions::{TrayNext, TrayQuit, TrayShowWindow, TrayTogglePlay};
 
-use gpui::{App, Global, Image, ImageFormat, MenuItem, WeakEntity, WindowHandle};
-use gpui_tray::{DoubleClickEvent, Tray, TrayAppContext};
+use nekowg_tray::{DoubleClickEvent, Tray, TrayAppContext};
+use nekowg::{App, Global, Image, ImageFormat, MenuItem, WeakEntity, WindowHandle};
 use tracing::error;
 
 use crate::action::ui_actions::{

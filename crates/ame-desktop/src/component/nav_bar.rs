@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
-use gpui::{
-    AnyElement, App, Div, Entity, FontWeight, MouseButton, SharedString, div, img, prelude::*, px,
-    relative, rgb, rgba,
-};
-use gpui_animation::{animation::TransitionExt, transition::general::Linear};
-use std::time::Duration;
-
+use crate::animation::{Linear, TransitionExt};
 use crate::component::{
     button,
     icon::{self, IconName},
     input, theme,
 };
+use nekowg::{
+    AnyElement, App, Div, Entity, FontWeight, MouseButton, SharedString, div, img, prelude::*, px,
+    relative, rgb, rgba,
+};
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct NavBarModel {
@@ -201,7 +200,7 @@ pub fn render(model: &NavBarModel, actions: &NavBarActions) -> AnyElement {
             img(model.avatar_asset.clone())
                 .size(px(30.))
                 .rounded_full()
-                .object_fit(gpui::ObjectFit::Cover),
+                .object_fit(nekowg::ObjectFit::Cover),
         )
         .on_mouse_down(MouseButton::Left, move |_, _, cx| profile_action(cx))
         .into_any_element();

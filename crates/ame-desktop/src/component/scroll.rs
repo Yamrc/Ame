@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gpui::{
+use nekowg::{
     AnyElement, Bounds, Context, DragMoveEvent, IsZero, MouseButton, MouseDownEvent,
     MouseMoveEvent, Pixels, Point, Render, ScrollDelta, ScrollHandle, Window, div, point,
     prelude::*, px, rgba, size,
@@ -319,7 +319,7 @@ impl SmoothScrollState {
     }
 
     pub fn clamp_y(&self, target: Pixels) -> Pixels {
-        clamp_y_to_max_offset(target, self.handle.max_offset().height)
+        clamp_y_to_max_offset(target, self.handle.max_offset().y)
     }
 
     pub fn apply_scroll_delta(
@@ -425,7 +425,7 @@ impl SmoothScrollState {
         let viewport = self.handle.bounds();
         let viewport_h = viewport.size.height;
         let viewport_w = viewport.size.width;
-        let max_offset_y = self.handle.max_offset().height.max(px(0.));
+        let max_offset_y = self.handle.max_offset().y.max(px(0.));
         let content_h = viewport_h + max_offset_y;
         let offset_y = self.handle.offset().y;
 

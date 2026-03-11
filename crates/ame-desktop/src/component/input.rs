@@ -1,12 +1,12 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use gpui::{
+use nekowg::{
     App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
     Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding,
     LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
-    ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div,
-    fill, point, prelude::*, px, relative, rgb, rgba, size,
+    ShapedLine, SharedString, Style, TextAlign, TextRun, UTF16Selection, UnderlineStyle, Window,
+    actions, div, fill, point, prelude::*, px, relative, rgb, rgba, size,
 };
 
 use crate::component::theme;
@@ -331,8 +331,7 @@ impl InputState {
 
     #[allow(dead_code)]
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
-        let _ = cx;
-        window.focus(&self.focus_handle);
+        window.focus(&self.focus_handle, cx);
     }
 
     fn clamp_to_char_boundary(&self, mut offset: usize) -> usize {
@@ -508,7 +507,7 @@ impl InputState {
         if self.disabled {
             return;
         }
-        window.focus(&self.focus_handle(cx));
+        window.focus(&self.focus_handle(cx), cx);
         self.is_selecting = true;
         self.touch_cursor();
         let index = self.index_for_mouse_position(event.position);
@@ -808,7 +807,7 @@ impl Element for InputTextElement {
     fn request_layout(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&nekowg::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
@@ -821,7 +820,7 @@ impl Element for InputTextElement {
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&nekowg::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
@@ -945,7 +944,7 @@ impl Element for InputTextElement {
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&nekowg::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         prepaint: &mut Self::PrepaintState,
@@ -971,7 +970,14 @@ impl Element for InputTextElement {
             None => return,
         };
 
-        let _ = line.paint(bounds.origin, window.line_height(), window, cx);
+        let _ = line.paint(
+            bounds.origin,
+            window.line_height(),
+            TextAlign::Left,
+            None,
+            window,
+            cx,
+        );
 
         if !disabled
             && cursor_visible

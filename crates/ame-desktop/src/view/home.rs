@@ -1,11 +1,14 @@
-use gpui::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb, rgba};
+use nekowg::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb, rgba};
 
-use crate::component::{
-    button,
-    icon::{self, IconName},
-    theme,
-};
 use crate::view::common;
+use crate::{
+    component::{
+        button,
+        icon::{self, IconName},
+        theme,
+    },
+    util::url::image_resize_url,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HomePlaylistCard {
@@ -40,7 +43,12 @@ fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'sta
         .relative()
         .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
         .child(match cover {
-            Some(url) => img(url).w_full().h_full().rounded_xl().into_any_element(),
+            Some(url) => img(image_resize_url(&url, "256y256"))
+                .id(format!("home-daily-featured-{}", &url))
+                .w_full()
+                .h_full()
+                .rounded_xl()
+                .into_any_element(),
             None => div()
                 .w_full()
                 .h_full()
@@ -110,7 +118,8 @@ fn featured_fm_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static
                 .flex()
                 .gap(px(16.))
                 .child(match cover {
-                    Some(url) => img(url)
+                    Some(url) => img(image_resize_url(&url, "256y256"))
+                        .id(format!("home-fm-featured-{}", &url))
                         .w(px(162.))
                         .h(px(162.))
                         .rounded_lg()
@@ -216,7 +225,8 @@ pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'stati
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
         .child(match cover {
-            Some(url) => img(url)
+            Some(url) => img(image_resize_url(&url, "256y256"))
+                .id(format!("home-playlist-{}", &url))
                 .w_full()
                 .h(px(166.))
                 .rounded_lg()

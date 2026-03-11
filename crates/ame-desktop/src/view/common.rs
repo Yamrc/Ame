@@ -1,4 +1,4 @@
-use gpui::{AnyElement, Pixels, SharedString, div, prelude::*, rgb};
+use nekowg::{AnyElement, Pixels, SharedString, div, prelude::*, rgb};
 
 use crate::component::theme;
 

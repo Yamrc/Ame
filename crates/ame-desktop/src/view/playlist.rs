@@ -1,4 +1,4 @@
-use gpui::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
+use nekowg::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
 
 use crate::component::button;
 use crate::component::theme;

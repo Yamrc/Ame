@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui::{AnyElement, App, FontWeight, Image, MouseButton, div, img, prelude::*, px, rgb};
+use nekowg::{AnyElement, App, FontWeight, Image, MouseButton, div, img, prelude::*, px, rgb};
 
 use crate::component::{button, theme};
 

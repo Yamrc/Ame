@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui::{
+use nekowg::{
     AnyElement, App, Div, Entity, FontWeight, MouseButton, SharedString, div, img, prelude::*, px,
     relative, rgb, rgba,
 };
@@ -12,6 +12,7 @@ use crate::component::{
     slider,
 };
 use crate::entity::player::PlaybackMode;
+use crate::util::url::image_resize_url;
 
 #[derive(Debug, Clone)]
 pub struct BottomBarModel {
@@ -105,7 +106,7 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
     };
 
     let cover = if let Some(url) = model.current_cover_url.as_ref() {
-        img(url.clone())
+        img(image_resize_url(&url, "48y48"))
             .size(px(46.))
             .rounded_md()
             .into_any_element()
@@ -179,7 +180,7 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
             "player-toggle",
             button::icon_base(button::ButtonStyle::default())
                 .size(px(44.))
-                .text_color(rgb(theme::COLOR_PRIMARY))
+                .text_color(rgb(icon_color_main))
                 .child(icon::render(
                     if model.is_playing {
                         IconName::Pause
@@ -187,7 +188,7 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
                         IconName::Play
                     },
                     icon_size_md,
-                    theme::COLOR_PRIMARY,
+                    icon_color_main,
                 ))
                 .on_mouse_down(MouseButton::Left, move |_, _, cx| toggle_action(cx)),
             button::ButtonStyle::default(),

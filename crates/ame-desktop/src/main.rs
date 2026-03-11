@@ -4,11 +4,14 @@
 )]
 
 mod action;
+mod animation;
 mod component;
 mod entity;
 mod gpui_http;
 mod kernel;
+mod router;
 mod tray;
+mod util;
 mod view;
 
 use crate::action::ui_actions::{
@@ -17,10 +20,11 @@ use crate::action::ui_actions::{
 };
 use ame_core::init_logger;
 use anyhow::Result;
-use gpui::{
-    App, AppContext, Application, AssetSource, Bounds, KeyBinding, SharedString, TitlebarOptions,
-    WindowBounds, WindowOptions, px, size,
+use nekowg::{
+    App, AppContext, AssetSource, Bounds, KeyBinding, SharedString, TitlebarOptions, WindowBounds,
+    WindowOptions, px, size,
 };
+use nekowg_platform::application;
 use rust_embed::RustEmbed;
 use std::{borrow::Cow, collections::HashSet};
 use tracing::error;
@@ -61,7 +65,7 @@ impl AssetSource for Assets {
 
 fn main() {
     init_logger();
-    Application::new().with_assets(Assets).run(|cx: &mut App| {
+    application().with_assets(Assets).run(|cx: &mut App| {
         let http_client = match gpui_http::build_http_client("ame-app/0.0.6") {
             Ok(client) => Some(client),
             Err(err) => {
@@ -73,7 +77,7 @@ fn main() {
             cx.set_http_client(http_client);
         }
 
-        gpui_router::init(cx);
+        router::init(cx);
         tray::init(cx);
         component::input::init_keybindings(cx);
         cx.bind_keys([
@@ -107,7 +111,9 @@ fn main() {
             tray::set_kernel_commands(cx, root.read(cx).kernel_command_sender());
             let weak = root.downgrade();
             window.on_window_should_close(cx, move |window, cx| {
-                let _ = weak.update(cx, |root, cx| root.request_window_close(window, cx));
+                let _ = weak.update(cx, |root: &mut view::root::RootView, cx| {
+                    root.request_window_close(window, cx);
+                });
                 false
             });
             root

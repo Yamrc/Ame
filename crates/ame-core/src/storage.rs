@@ -35,6 +35,7 @@ impl AppStorage {
         let pid = std::process::id();
         let seq = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let db_path = base.join(format!("temp-{pid}-{seq}.redb"));
+        let _ = std::fs::remove_file(&db_path);
         let db = open_database_file(&db_path)?;
         Ok(Self { db })
     }

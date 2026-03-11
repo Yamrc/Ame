@@ -15,10 +15,12 @@ ame-core = { path = "../ame-core" }
 ame-audio = { path = "../ame-audio" }
 ame-netease = { path = "../ame-netease" }
 anyhow.workspace = true
-gpui.workspace = true
-gpui-animation.workspace = true
-gpui-router.workspace = true
-gpui-tray.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
+smol.workspace = true
+nekowg.workspace = true
+nekowg_platform.workspace = true
+nekowg-tray.workspace = true
 futures.workspace = true
 reqwest.workspace = true
 rust-embed.workspace = true

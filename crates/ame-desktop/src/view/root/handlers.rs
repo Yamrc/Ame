@@ -1,8 +1,8 @@
-use gpui::{Context, SharedString};
-use gpui_router::use_navigate;
+use crate::router::navigate;
+use nekowg::{Context, SharedString};
 
 use ame_audio::{AudioCommand, AudioError, SeekTarget, SourceSpec};
-use gpui::{Image, ImageFormat};
+use nekowg::{Image, ImageFormat};
 use qrcode::{QrCode, render::svg};
 use std::sync::Arc;
 
@@ -1041,7 +1041,7 @@ impl RootView {
 
     pub(crate) fn request_window_close(
         &mut self,
-        _window: &mut gpui::Window,
+        _window: &mut nekowg::Window,
         cx: &mut Context<Self>,
     ) {
         // TODO: 恢复按 close_behavior 分支处理（HideToTray / Ask / Exit）。
@@ -1075,10 +1075,7 @@ impl RootView {
     }
 
     pub(super) fn navigate_to(path: impl Into<SharedString>, cx: &mut Context<Self>) {
-        {
-            let mut navigate = use_navigate(cx);
-            navigate(path.into());
-        }
+        navigate(cx, path.into());
         cx.notify();
     }
 }

@@ -1,7 +1,7 @@
-use std::{any::type_name, mem, sync::Arc, time::Duration};
+use std::{mem, sync::Arc, time::Duration};
 
 use futures::future::BoxFuture;
-use gpui::http_client::{self, HttpClient, Url, http};
+use nekowg::http_client::{self, HttpClient, Url, http};
 use reqwest::header::{HeaderMap, HeaderValue};
 
 const MUSIC_163_CDN_SUFFIX: &str = ".music.126.net";
@@ -65,10 +65,6 @@ impl ReqwestGpuiClient {
 }
 
 impl HttpClient for ReqwestGpuiClient {
-    fn type_name(&self) -> &'static str {
-        type_name::<Self>()
-    }
-
     fn user_agent(&self) -> Option<&HeaderValue> {
         self.user_agent.as_ref()
     }

@@ -1,13 +1,12 @@
-use gpui::{
+use crate::animation::{Linear, TransitionExt};
+use crate::component::theme;
+use nekowg::{
     App, Bounds, Context, DragMoveEvent, Element, ElementId, Entity, EventEmitter, GlobalElementId,
     InteractiveElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     PaintQuad, Pixels, Point, Render, Rgba, Style, Window, div, fill, point, prelude::*, px,
     relative, rgb, rgba, size,
 };
-use gpui_animation::{animation::TransitionExt, transition::general::Linear};
 use std::time::Duration;
-
-use crate::component::theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SliderVariant {
@@ -266,8 +265,12 @@ impl SliderState {
         self.update_by_position(event.position, cx);
     }
 
-    fn drag_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn drag_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.disabled || !self.dragging {
+            return;
+        }
+        if event.pressed_button.is_none() {
+            self.finish_drag(window, cx);
             return;
         }
         self.update_by_position(event.position, cx);
@@ -276,20 +279,30 @@ impl SliderState {
     fn drag_move_global(
         &mut self,
         event: &DragMoveEvent<SliderDragToken>,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.disabled || !self.dragging {
             return;
         }
+        if event.event.pressed_button.is_none() {
+            self.finish_drag(window, cx);
+            return;
+        }
         self.update_by_position(event.event.position, cx);
     }
 
-    fn end_drag(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if self.disabled || !self.dragging {
+    fn end_drag(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.finish_drag(window, cx);
+    }
+
+    fn finish_drag(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let was_dragging = self.dragging;
+        self.dragging = false;
+        cx.stop_active_drag(window);
+        if self.disabled || !was_dragging {
             return;
         }
-        self.dragging = false;
         cx.emit(SliderEvent::Commit(self.value));
         cx.notify();
     }
@@ -371,7 +384,7 @@ impl Element for SliderBoundsProbe {
     fn request_layout(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&nekowg::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
@@ -384,7 +397,7 @@ impl Element for SliderBoundsProbe {
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&nekowg::InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _window: &mut Window,
@@ -406,7 +419,7 @@ impl Element for SliderBoundsProbe {
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&nekowg::InspectorElementId>,
         _bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,
@@ -516,6 +529,6 @@ impl Render for SliderState {
 }
 
 #[allow(dead_code)]
-pub fn slider_fill_quad(bounds: Bounds<Pixels>, color: gpui::Rgba) -> PaintQuad {
+pub fn slider_fill_quad(bounds: Bounds<Pixels>, color: nekowg::Rgba) -> PaintQuad {
     fill(bounds, color)
 }

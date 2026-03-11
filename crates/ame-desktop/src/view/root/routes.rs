@@ -1,5 +1,7 @@
-use gpui::{AnyElement, Entity, ListSizingBehavior, MouseButton, ScrollHandle, prelude::*, px};
-use gpui_router::{Route, Routes, use_params};
+use crate::router::{Route, Routes, use_params};
+use nekowg::{
+    AnyElement, Context, Entity, ListSizingBehavior, MouseButton, ScrollHandle, prelude::*, px,
+};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::component::{button, virtual_list};
@@ -200,6 +202,7 @@ impl RootView {
 
     pub(super) fn render_routes(
         &self,
+        cx: &mut Context<Self>,
         root_entity: Entity<RootView>,
         player_entity: Entity<PlayerEntity>,
         model: RoutesModel,
@@ -338,7 +341,7 @@ impl RootView {
                                         let play_root_entity = root_for_list.clone();
                                         let remove_root_entity = root_for_list.clone();
                                         let item_id = item.id;
-                                        gpui::div().pb(px(8.)).child(next::queue_row(
+                                        nekowg::div().pb(px(8.)).child(next::queue_row(
                                             item,
                                             move |cx| {
                                                 play_root_entity.update(cx, |this, _| {
@@ -419,7 +422,7 @@ impl RootView {
                                         let queue_track = play_track.clone();
                                         let root_for_play = root_for_list.clone();
                                         let root_for_queue = root_for_list.clone();
-                                        gpui::div().pb(px(8.)).child(playlist::track_row(
+                                        nekowg::div().pb(px(8.)).child(playlist::track_row(
                                             track,
                                             move |cx| {
                                                 root_for_play.update(cx, |this, _| {
@@ -564,6 +567,6 @@ impl RootView {
                     )
                 }
             }))
-            .into_any_element()
+            .render(cx)
     }
 }

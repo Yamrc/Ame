@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use gpui::{
+use nekowg::{
     AnyElement, App, AvailableSpace, Bounds, ContentMask, Div, Element, ElementId, GlobalElementId,
     Hitbox, InteractiveElement, IntoElement, LayoutId, ListSizingBehavior, Pixels, ScrollHandle,
     Stateful, StatefulInteractiveElement, StyleRefinement, Styled, Window, div, point, px, size,
@@ -159,7 +159,7 @@ impl Element for VirtualList {
     fn request_layout(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        inspector_id: Option<&gpui::InspectorElementId>,
+        inspector_id: Option<&nekowg::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
@@ -230,7 +230,7 @@ impl Element for VirtualList {
     fn prepaint(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        inspector_id: Option<&gpui::InspectorElementId>,
+        inspector_id: Option<&nekowg::InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
@@ -347,7 +347,7 @@ impl Element for VirtualList {
     fn paint(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        inspector_id: Option<&gpui::InspectorElementId>,
+        inspector_id: Option<&nekowg::InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         prepaint: &mut Self::PrepaintState,

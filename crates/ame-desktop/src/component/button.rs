@@ -1,16 +1,15 @@
-use gpui::{Div, SharedString, div, prelude::*, px, rgb, rgba};
-use gpui_animation::{animation::TransitionExt, transition::general::Linear};
-use std::time::Duration;
-
+use crate::animation::{Linear, TransitionExt};
 use crate::component::theme;
+use nekowg::{Div, SharedString, div, prelude::*, px, rgb, rgba};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ButtonStyle {
-    pub padding: gpui::Pixels,
-    pub margin: gpui::Pixels,
-    pub radius: gpui::Pixels,
-    pub base_bg: gpui::Rgba,
-    pub hover_bg: gpui::Rgba,
+    pub padding: nekowg::Pixels,
+    pub margin: nekowg::Pixels,
+    pub radius: nekowg::Pixels,
+    pub base_bg: nekowg::Rgba,
+    pub hover_bg: nekowg::Rgba,
     pub hover_duration_ms: u64,
 }
 
@@ -103,16 +102,16 @@ pub fn chip_base(label: impl Into<SharedString>, active: bool) -> Div {
             rgb(theme::COLOR_SECONDARY)
         })
         .text_size(px(18.))
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(nekowg::FontWeight::SEMIBOLD)
         .cursor_pointer()
         .child(label.into())
 }
 
-pub fn transparent_bg() -> gpui::Rgba {
+pub fn transparent_bg() -> nekowg::Rgba {
     rgba(theme::with_alpha(theme::COLOR_BODY_BG_DARK, 0x00))
 }
 
-pub fn hover_bg() -> gpui::Rgba {
+pub fn hover_bg() -> nekowg::Rgba {
     rgba(theme::with_alpha(
         theme::COLOR_SECONDARY_BG_TRANSPARENT_DARK,
         theme::ALPHA_SECONDARY_BG_TRANSPARENT,

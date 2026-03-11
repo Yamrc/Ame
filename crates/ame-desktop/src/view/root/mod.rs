@@ -1,11 +1,11 @@
 mod handlers;
 mod routes;
 
-use gpui::{
+use crate::router;
+use nekowg::{
     AnyElement, Context, Entity, Image, Render, ScrollWheelEvent, Subscription, Window, div,
     prelude::*, relative, rgb,
 };
-use gpui_router::RouterState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -17,7 +17,6 @@ use ame_core::storage::{AppStorage, SettingsStore, StateStore};
 use crate::component::{
     bottom_bar, input,
     nav_bar::{self, NavBarActions, NavBarModel},
-    net_image_cache,
     scroll::{
         ScrollBarActions, ScrollBarModel, ScrollBarStyle, SmoothScrollConfig, SmoothScrollState,
     },
@@ -67,7 +66,6 @@ pub struct RootView {
     search_error: Option<String>,
     main_scroll: SmoothScrollState,
     main_scroll_config: SmoothScrollConfig,
-    image_cache: Entity<net_image_cache::LruImageCache>,
     settings_store: Option<SettingsStore>,
     state_store: Option<StateStore>,
     credential_store: CredentialStore,
@@ -231,11 +229,10 @@ impl RootView {
                 .placeholder("搜索")
                 .disabled(false)
         });
-        let image_cache = net_image_cache::LruImageCache::default_for_app(cx);
         let progress_slider_style = SliderStyle::for_variant(SliderVariant::ProgressLine)
             .thumb_visibility(SliderThumbVisibility::DragOnly)
-            .root_height(gpui::px(2.))
-            .track_height(gpui::px(2.));
+            .root_height(nekowg::px(2.))
+            .track_height(nekowg::px(2.));
         let volume_slider_style = SliderStyle::for_variant(SliderVariant::Default)
             .thumb_visibility(SliderThumbVisibility::HoverOrDrag);
         let player_progress_slider = cx.new(|cx| {
@@ -314,9 +311,8 @@ impl RootView {
             search_results: Vec::new(),
             search_loading: false,
             search_error: None,
-            main_scroll: SmoothScrollState::new(gpui::ScrollHandle::default()),
+            main_scroll: SmoothScrollState::new(nekowg::ScrollHandle::default()),
             main_scroll_config,
-            image_cache,
             settings_store,
             state_store,
             credential_store,
@@ -347,7 +343,7 @@ impl RootView {
             close_behavior,
             kernel_runtime,
         };
-        root.main_scroll.target_y = gpui::px(0.);
+        root.main_scroll.target_y = nekowg::px(0.);
 
         if let Some(err) = search_error {
             Self::push_error(&mut root.search_error, err);
@@ -422,12 +418,7 @@ impl RootView {
 impl Render for RootView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let root_entity = cx.entity();
-        let pathname = cx
-            .global::<RouterState>()
-            .location
-            .pathname
-            .as_ref()
-            .to_string();
+        let pathname = router::current_path(cx).as_ref().to_string();
 
         let _app = self.app.read(cx).clone();
         let player = self.player.read(cx).clone();
@@ -492,6 +483,7 @@ impl Render for RootView {
             },
         );
         let routes = self.render_routes(
+            cx,
             root_entity,
             player_entity,
             routes::RoutesModel {
@@ -620,7 +612,6 @@ impl Render for RootView {
             .size_full()
             .bg(rgb(theme::COLOR_BODY_BG_DARK))
             .text_color(rgb(theme::COLOR_TEXT_DARK))
-            .image_cache(self.image_cache.clone())
             .flex()
             .flex_col()
             .overflow_hidden()
@@ -651,7 +642,7 @@ impl RootView {
                 hovering_bar: self.main_scroll.hovering_bar,
                 viewport_origin,
                 style: ScrollBarStyle::default()
-                    .overlay_width(gpui::px(self.main_scroll_config.overlay_width_px)),
+                    .overlay_width(nekowg::px(self.main_scroll_config.overlay_width_px)),
             },
             &ScrollBarActions::<Self> {
                 on_hover: Arc::new(move |this, hovered, cx| {

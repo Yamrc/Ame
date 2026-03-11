@@ -1,4 +1,4 @@
-use gpui::actions;
+use nekowg::actions;
 
 actions!(
     ui_actions,
