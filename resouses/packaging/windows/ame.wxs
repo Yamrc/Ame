@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product
     Id="*"
     Name="Ame"
     Language="!(loc.ProductLanguage)"
     Codepage="65001"
     Version="$(var.ProductVersion)"
-    Manufacturer="Yamrc"
+    Manufacturer="NeoNekos"
     UpgradeCode="A5231D3F-2ED7-4E43-8F87-ECE918F16F58">
     <Package
       InstallerVersion="500"
@@ -21,7 +22,35 @@
 
     <MediaTemplate EmbedCab="yes" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="ADD_START_MENU_SHORTCUT" Value="1" />
+    <Property Id="REMOVE_APPDATA" Value="1" />
     <UIRef Id="WixUI_InstallDir" />
+    <UIRef Id="WixUI_Common" />
+
+    <UI>
+      <Dialog Id="AmeOptionsDlg" Width="370" Height="270" Title="!(loc.OptionsDialogTitle)">
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.OptionsDialogTitle)" />
+        <Control Id="Description" Type="Text" X="15" Y="24" Width="340" Height="30" Transparent="yes" NoPrefix="yes" Text="!(loc.OptionsDialogDescription)" />
+
+        <Control Id="StartMenuCheckbox" Type="CheckBox" X="20" Y="70" Width="330" Height="18"
+          Property="ADD_START_MENU_SHORTCUT" CheckBoxValue="1" Text="!(loc.OptionsStartMenuShortcut)" />
+        <Control Id="RemoveAppDataCheckbox" Type="CheckBox" X="20" Y="92" Width="330" Height="18"
+          Property="REMOVE_APPDATA" CheckBoxValue="1" Text="!(loc.OptionsRemoveAppData)" />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="AmeOptionsDlg">1</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="AmeOptionsDlg">1</Publish>
+    </UI>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
@@ -29,12 +58,57 @@
           <Component Id="cmpAmeExe" Guid="*" Win64="yes">
             <File Id="filAmeExe" Source="$(var.SourceExe)" KeyPath="yes" />
           </Component>
+          <Component Id="cmpAmeRegistry" Guid="*" Win64="yes">
+            <RegistryKey Root="HKLM" Key="Software\NeoNekos\Ame">
+              <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+              <RegistryValue Name="Version" Type="string" Value="$(var.ProductVersion)" />
+            </RegistryKey>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AmeProgramMenuFolder" Name="Ame">
+          <Component Id="cmpStartMenuShortcut" Guid="*" Win64="yes">
+            <Condition>ADD_START_MENU_SHORTCUT=1</Condition>
+            <Shortcut
+              Id="AmeStartMenuShortcut"
+              Name="Ame"
+              Description="Ame"
+              Target="[INSTALLFOLDER]ame.exe"
+              WorkingDirectory="INSTALLFOLDER" />
+            <RemoveFolder Id="RemoveAmeProgramMenuFolder" On="uninstall" />
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\NeoNekos\Ame"
+              Name="StartMenuShortcut"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="AppDataFolder">
+        <Directory Id="APPDATADIR" Name="Ame">
+          <Component Id="cmpAppDataCleanup" Guid="*" Win64="yes">
+            <Condition>REMOVE_APPDATA=1</Condition>
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\NeoNekos\Ame"
+              Name="AppDataDir"
+              Type="string"
+              Value="[APPDATADIR]"
+              KeyPath="yes" />
+            <util:RemoveFolderEx Id="RemoveAppData" On="uninstall" Property="APPDATADIR" />
+          </Component>
         </Directory>
       </Directory>
     </Directory>
 
     <Feature Id="MainFeature" Title="Ame" Level="1">
       <ComponentRef Id="cmpAmeExe" />
+      <ComponentRef Id="cmpAmeRegistry" />
+      <ComponentRef Id="cmpStartMenuShortcut" />
+      <ComponentRef Id="cmpAppDataCleanup" />
     </Feature>
   </Product>
 </Wix>
