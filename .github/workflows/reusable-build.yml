@@ -115,9 +115,9 @@ jobs:
           choco install wixtoolset --yes --no-progress
           $sourceExe = (Resolve-Path "target/release/ame.exe").Path
           $wixobj = "$env:RUNNER_TEMP/ame.wixobj"
-          candle.exe -ext WixUIExtension "-dSourceExe=$sourceExe" "-dProductVersion=$env:APP_VERSION" -out "$wixobj" "packaging/windows/ame.wxs"
-          light.exe -ext WixUIExtension -loc "packaging/windows/en-us.wxl" -out "dist/ame-windows-x86_64-en-US.msi" "$wixobj"
-          light.exe -ext WixUIExtension -loc "packaging/windows/zh-cn.wxl" -out "dist/ame-windows-x86_64-zh-CN.msi" "$wixobj"
+          candle.exe -ext WixUIExtension "-dSourceExe=$sourceExe" "-dProductVersion=$env:APP_VERSION" -out "$wixobj" "resouses/packaging/windows/ame.wxs"
+          light.exe -ext WixUIExtension -loc "resouses/packaging/windows/en-us.wxl" -out "dist/ame-windows-x86_64-en-US.msi" "$wixobj"
+          light.exe -ext WixUIExtension -loc "resouses/packaging/windows/zh-cn.wxl" -out "dist/ame-windows-x86_64-zh-CN.msi" "$wixobj"
 
       - name: Build PKG installer
         if: inputs.include_installers && runner.os == 'macOS'
