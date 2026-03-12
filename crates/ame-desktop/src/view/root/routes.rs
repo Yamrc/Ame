@@ -401,7 +401,7 @@ impl RootView {
                     let preview_count = library_liked_tracks.len().min(12);
                     let preview_rows = preview_count.div_ceil(3).max(2);
                     let preview_height = preview_rows as f32 * 52.0
-                        + (preview_rows.saturating_sub(1) as f32) * 12.0;
+                        + (preview_rows.saturating_sub(1) as f32) * 8.0;
                     let preview_min_height = px(preview_height);
                     let title = auth_user_name
                         .as_deref()
@@ -461,44 +461,47 @@ impl RootView {
                             });
                         })
                     };
-                    library::render(
-                        &title,
-                        auth_user_avatar.clone(),
-                        library_loading,
-                        library_error.as_deref(),
+                    let model = library::LibraryViewModel {
+                        title: title.clone().into(),
+                        user_avatar: auth_user_avatar.clone(),
+                        loading: library_loading,
+                        error: library_error.clone().map(Into::into),
                         liked_card,
-                        &library_liked_tracks,
+                        liked_tracks: library_liked_tracks.clone(),
                         preview_min_height,
-                        library_tab,
-                        {
+                        active_tab: library_tab,
+                        created_rows,
+                        collected_rows,
+                        followed_rows: Vec::new(),
+                    };
+                    let actions = library::LibraryActions {
+                        on_tab_created: {
                             let root_entity = root_entity.clone();
-                            move |cx| {
+                            Arc::new(move |cx| {
                                 root_entity.update(cx, |this, _| {
                                     this.library_tab = library::LibraryTab::Created;
                                 });
-                            }
+                            })
                         },
-                        {
+                        on_tab_collected: {
                             let root_entity = root_entity.clone();
-                            move |cx| {
+                            Arc::new(move |cx| {
                                 root_entity.update(cx, |this, _| {
                                     this.library_tab = library::LibraryTab::Collected;
                                 });
-                            }
+                            })
                         },
-                        {
+                        on_tab_followed: {
                             let root_entity = root_entity.clone();
-                            move |cx| {
+                            Arc::new(move |cx| {
                                 root_entity.update(cx, |this, _| {
                                     this.library_tab = library::LibraryTab::Followed;
                                 });
-                            }
+                            })
                         },
-                        preview_play,
-                        created_rows,
-                        collected_rows,
-                        Vec::new(),
-                    )
+                        on_preview_play: preview_play,
+                    };
+                    library::render(model, actions)
                 }
             }))
             .child(Route::new().path("search").element({

@@ -7,11 +7,13 @@ use crate::action::library_actions::PlaylistTrackItem;
 use crate::component::{button, icon, theme};
 use crate::util::url::image_resize_url;
 use crate::view::common;
+use nekowg::SharedString;
 
 const PREVIEW_COLS: usize = 3;
 const PREVIEW_MAX: usize = 12;
 const PREVIEW_ROW_HEIGHT: f32 = 52.0;
 const PREVIEW_ROW_GAP: f32 = 8.0;
+type PreviewPlayHandler = Arc<dyn Fn(PlaylistTrackItem, &mut App)>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryPlaylistCard {
@@ -27,6 +29,27 @@ pub enum LibraryTab {
     Created,
     Collected,
     Followed,
+}
+
+pub struct LibraryViewModel {
+    pub title: SharedString,
+    pub user_avatar: Option<String>,
+    pub loading: bool,
+    pub error: Option<SharedString>,
+    pub liked_card: Option<AnyElement>,
+    pub liked_tracks: Vec<PlaylistTrackItem>,
+    pub preview_min_height: nekowg::Pixels,
+    pub active_tab: LibraryTab,
+    pub created_rows: Vec<AnyElement>,
+    pub collected_rows: Vec<AnyElement>,
+    pub followed_rows: Vec<AnyElement>,
+}
+
+pub struct LibraryActions {
+    pub on_tab_created: Arc<dyn Fn(&mut App)>,
+    pub on_tab_collected: Arc<dyn Fn(&mut App)>,
+    pub on_tab_followed: Arc<dyn Fn(&mut App)>,
+    pub on_preview_play: PreviewPlayHandler,
 }
 
 pub fn playlist_row(item: LibraryPlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
@@ -67,38 +90,35 @@ pub fn playlist_row(item: LibraryPlaylistCard, on_open: impl Fn(&mut App) + 'sta
         .into_any_element()
 }
 
-pub fn render(
-    title: &str,
-    user_avatar: Option<String>,
-    loading: bool,
-    error: Option<&str>,
-    liked_card: Option<AnyElement>,
-    liked_tracks: &[PlaylistTrackItem],
-    preview_min_height: nekowg::Pixels,
-    active_tab: LibraryTab,
-    on_tab_created: impl Fn(&mut App) + 'static,
-    on_tab_collected: impl Fn(&mut App) + 'static,
-    on_tab_followed: impl Fn(&mut App) + 'static,
-    on_preview_play: Arc<dyn Fn(PlaylistTrackItem, &mut App)>,
-    created_rows: Vec<AnyElement>,
-    collected_rows: Vec<AnyElement>,
-    followed_rows: Vec<AnyElement>,
-) -> AnyElement {
-    let status = common::status_banner(loading, error, "加载中...", "加载失败");
-    let liked_card = liked_card.unwrap_or_else(|| empty_liked_card(preview_min_height));
+pub fn render(mut model: LibraryViewModel, actions: LibraryActions) -> AnyElement {
+    let status = common::status_banner(
+        model.loading,
+        model.error.as_ref().map(AsRef::as_ref),
+        "加载中...",
+        "加载失败",
+    );
+    let liked_card = model
+        .liked_card
+        .take()
+        .unwrap_or_else(|| empty_liked_card(model.preview_min_height));
     let liked_preview = liked_preview_list(
-        liked_tracks,
+        &model.liked_tracks,
         PREVIEW_ROW_HEIGHT,
         PREVIEW_ROW_GAP,
-        on_preview_play,
+        actions.on_preview_play.clone(),
     );
-    let header = build_header(title, user_avatar);
+    let header = build_header(&model.title, model.user_avatar.take());
 
-    let tabs = render_tabs(active_tab, on_tab_created, on_tab_collected, on_tab_followed);
-    let panel = match active_tab {
-        LibraryTab::Created => render_tab_panel(created_rows, "暂无创建歌单"),
-        LibraryTab::Collected => render_tab_panel(collected_rows, "暂无收藏歌单"),
-        LibraryTab::Followed => render_tab_panel(followed_rows, "暂无关注"),
+    let tabs = render_tabs(
+        model.active_tab,
+        actions.on_tab_created,
+        actions.on_tab_collected,
+        actions.on_tab_followed,
+    );
+    let panel = match model.active_tab {
+        LibraryTab::Created => render_tab_panel(model.created_rows, "暂无创建歌单"),
+        LibraryTab::Collected => render_tab_panel(model.collected_rows, "暂无收藏歌单"),
+        LibraryTab::Followed => render_tab_panel(model.followed_rows, "暂无关注"),
     };
 
     div()
@@ -228,7 +248,7 @@ fn liked_preview_list(
     tracks: &[PlaylistTrackItem],
     row_height: f32,
     row_gap: f32,
-    on_play: Arc<dyn Fn(PlaylistTrackItem, &mut App)>,
+    on_play: PreviewPlayHandler,
 ) -> AnyElement {
     if tracks.is_empty() {
         return common::empty_card("暂无喜欢歌曲");
@@ -317,7 +337,7 @@ fn liked_preview_list(
         .into_any_element()
 }
 
-fn build_header(title: &str, user_avatar: Option<String>) -> AnyElement {
+fn build_header(title: &SharedString, user_avatar: Option<String>) -> AnyElement {
     div()
         .flex()
         .items_center()
@@ -339,17 +359,20 @@ fn build_header(title: &str, user_avatar: Option<String>) -> AnyElement {
                 .text_size(px(42.))
                 .font_weight(FontWeight::BOLD)
                 .text_color(rgb(theme::COLOR_TEXT_DARK))
-                .child(title.to_string()),
+                .child(title.clone()),
         )
         .into_any_element()
 }
 
 fn render_tabs(
     active_tab: LibraryTab,
-    on_tab_created: impl Fn(&mut App) + 'static,
-    on_tab_collected: impl Fn(&mut App) + 'static,
-    on_tab_followed: impl Fn(&mut App) + 'static,
+    on_tab_created: Arc<dyn Fn(&mut App)>,
+    on_tab_collected: Arc<dyn Fn(&mut App)>,
+    on_tab_followed: Arc<dyn Fn(&mut App)>,
 ) -> AnyElement {
+    let on_tab_created = on_tab_created.clone();
+    let on_tab_collected = on_tab_collected.clone();
+    let on_tab_followed = on_tab_followed.clone();
     div()
         .flex()
         .gap(px(12.))

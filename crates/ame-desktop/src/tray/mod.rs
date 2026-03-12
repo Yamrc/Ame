@@ -99,7 +99,10 @@ fn with_kernel_commands(cx: &mut App, f: impl FnOnce(KernelCommandSender)) -> bo
 fn on_show_window(_: &TrayShowWindow, cx: &mut App) {
     cx.activate(true);
     with_main_window(cx, |window, cx| {
-        if let Err(err) = window.update(cx, |_, window, _| window.activate_window()) {
+        if let Err(err) = window.update(cx, |_, window, _| {
+            window.show();
+            window.activate_window();
+        }) {
             error!("show window failed: {err}");
         }
     });

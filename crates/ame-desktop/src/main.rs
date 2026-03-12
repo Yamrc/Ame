@@ -81,7 +81,7 @@ fn main() {
         tray::init(cx);
         component::input::init_keybindings(cx);
         cx.bind_keys([
-            KeyBinding::new("space", HotkeyTogglePlay, None),
+            KeyBinding::new("space", HotkeyTogglePlay, Some("!AmeInput")),
             KeyBinding::new("ctrl-right", HotkeyNextTrack, None),
             KeyBinding::new("ctrl-left", HotkeyPrevTrack, None),
             KeyBinding::new("ctrl-1", HotkeyHome, None),

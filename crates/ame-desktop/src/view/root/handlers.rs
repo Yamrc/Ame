@@ -1,5 +1,5 @@
 use crate::router::navigate;
-use nekowg::{Context, SharedString};
+use nekowg::{Context, PromptButton, PromptLevel, SharedString};
 
 use ame_audio::{AudioCommand, AudioError, SeekTarget, SourceSpec};
 use nekowg::{Image, ImageFormat};
@@ -1634,13 +1634,53 @@ impl RootView {
 
     pub(crate) fn request_window_close(
         &mut self,
-        _window: &mut nekowg::Window,
+        window: &mut nekowg::Window,
         cx: &mut Context<Self>,
     ) {
-        // TODO: 恢复按 close_behavior 分支处理（HideToTray / Ask / Exit）。
-        // 懒狗了，先不搞后台，反正MVP能用就行
-        self.prepare_app_exit(cx);
-        cx.quit();
+        match self.close_behavior {
+            CloseBehavior::HideToTray => {
+                window.hide();
+            }
+            CloseBehavior::Exit => {
+                self.prepare_app_exit(cx);
+                cx.quit();
+            }
+            CloseBehavior::Ask => {
+                let window_handle = window.window_handle();
+                let answer = window.prompt(
+                    PromptLevel::Info,
+                    "确定要关闭吗？",
+                    Some("以下选择会作为默认行为，可以在设置中修改"),
+                    &[
+                        PromptButton::new("隐藏到托盘"),
+                        PromptButton::ok("退出应用"),
+                        PromptButton::cancel("取消"),
+                    ],
+                    cx,
+                );
+                let root = cx.entity();
+                cx.spawn(async move |_, cx| {
+                    let Ok(choice) = answer.await else {
+                        return;
+                    };
+                    root.update(cx, |this, cx| match choice {
+                        0 => {
+                            this.set_close_behavior(CloseBehavior::HideToTray, cx);
+                            let _ = window_handle.update(cx, |_, window, _cx| {
+                                window.hide();
+                            });
+                        }
+                        1 => {
+                            this.set_close_behavior(CloseBehavior::Exit, cx);
+                            this.prepare_app_exit(cx);
+                            cx.quit();
+                        }
+                        _ => {}
+                    });
+                })
+                .detach();
+            }
+        }
     }
 
     pub(crate) fn prepare_app_exit(&mut self, cx: &mut Context<Self>) {
@@ -1680,7 +1720,3 @@ fn song_input_to_search_song(song: SongInput) -> search::SearchSong {
         artists: song.artists,
     }
 }
-
-
-
-

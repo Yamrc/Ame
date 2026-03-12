@@ -232,9 +232,9 @@ dependencies = [
 
 [[package]]
 name = "ashpd"
-version = "0.13.4"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5df42e54d7015b7a00d2db9f5cb9975bc4b0cd46627e666c94c3534207503e71"
+checksum = "0b09507a218cf6eb4ab0659883e54880cea3984e3dbaa4989b6cda3f8f8a97a5"
 dependencies = [
  "enumflags2",
  "futures-util",
@@ -1139,7 +1139,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "indexmap",
  "rustc-hash 2.1.1",
@@ -1650,7 +1650,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2685,7 +2685,7 @@ dependencies = [
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -3441,7 +3441,7 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "bindgen 0.71.1",
@@ -3635,7 +3635,7 @@ dependencies = [
 [[package]]
 name = "nekowg"
 version = "0.2.21"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -3724,7 +3724,7 @@ dependencies = [
 [[package]]
 name = "nekowg_linux"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3754,7 +3754,7 @@ dependencies = [
 [[package]]
 name = "nekowg_macos"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "async-task",
@@ -3795,7 +3795,7 @@ dependencies = [
 [[package]]
 name = "nekowg_macros"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -3806,7 +3806,7 @@ dependencies = [
 [[package]]
 name = "nekowg_platform"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "console_error_panic_hook",
  "nekowg",
@@ -3819,7 +3819,7 @@ dependencies = [
 [[package]]
 name = "nekowg_util"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "log",
@@ -3828,7 +3828,7 @@ dependencies = [
 [[package]]
 name = "nekowg_web"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",
@@ -3852,7 +3852,7 @@ dependencies = [
 [[package]]
 name = "nekowg_wgpu"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3879,7 +3879,7 @@ dependencies = [
 [[package]]
 name = "nekowg_windows"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "collections",
@@ -4404,9 +4404,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.21.3"
+version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
+checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "oo7"
@@ -5252,7 +5252,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "derive_refineable",
 ]
@@ -5667,7 +5667,7 @@ dependencies = [
 [[package]]
 name = "scheduler"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "async-task",
  "backtrace",
@@ -6263,7 +6263,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "arrayvec",
  "log",
@@ -7242,7 +7242,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#e45b9c19cc4a6acb71c48b9818846cee6d25bff7"
+source = "git+https://github.com/NeoNekos/NekoWG.git?branch=master#ff1e30ca2058ec742fadb75df6108c4d224aee39"
 dependencies = [
  "anyhow",
  "async-fs 2.2.0",
