@@ -4,32 +4,28 @@ use nekowg::{
 };
 use std::{collections::HashMap, sync::Arc};
 
+use crate::action::library_actions;
 use crate::component::{button, virtual_list};
 use crate::entity::app::CloseBehavior;
 use crate::entity::player::PlayerEntity;
 use crate::kernel::{AppCommand, SongInput};
-use crate::view::{discover, home, library, login, next, playlist, search, settings};
+use crate::view::{daily_tracks, discover, home, library, login, next, playlist, search, settings};
 
-use super::RootView;
+use super::{DataState, RootView};
 
 pub(super) struct RoutesModel {
-    pub home_playlists: Vec<library::LibraryPlaylistCard>,
+    pub home_recommend_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    pub home_recommend_artists: DataState<Vec<library_actions::ArtistItem>>,
+    pub home_new_albums: DataState<Vec<library_actions::AlbumItem>>,
+    pub home_toplists: DataState<Vec<library_actions::ToplistItem>>,
+    pub daily_tracks: DataState<Vec<library_actions::DailyTrackItem>>,
+    pub personal_fm: DataState<Option<library_actions::FmTrackItem>>,
     pub is_user_logged_in: bool,
-    pub home_loading: bool,
-    pub home_error: Option<String>,
-    pub discover_playlists: Vec<library::LibraryPlaylistCard>,
-    pub discover_loading: bool,
-    pub discover_error: Option<String>,
-    pub search_results: Vec<search::SearchSong>,
-    pub search_loading: bool,
-    pub search_error: Option<String>,
-    pub library_playlists: Vec<library::LibraryPlaylistCard>,
-    pub library_loading: bool,
-    pub library_error: Option<String>,
-    pub playlist_pages: HashMap<i64, playlist::PlaylistPage>,
+    pub discover_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    pub search_state: DataState<Vec<search::SearchSong>>,
+    pub library_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    pub playlist_state: DataState<HashMap<i64, playlist::PlaylistPage>>,
     pub page_scroll_handle: ScrollHandle,
-    pub playlist_loading: bool,
-    pub playlist_error: Option<String>,
     pub auth_account_summary: Option<String>,
     pub login_model: login::LoginViewModel,
     pub close_behavior_label: String,
@@ -37,29 +33,46 @@ pub(super) struct RoutesModel {
 
 impl RootView {
     fn build_home_featured_rows(
-        playlists: &[library::LibraryPlaylistCard],
+        daily_tracks: &[library_actions::DailyTrackItem],
+        fm_track: Option<&library_actions::FmTrackItem>,
         root_entity: &Entity<RootView>,
         is_user_logged_in: bool,
     ) -> Vec<AnyElement> {
         let mut rows = Vec::with_capacity(2);
 
+        let daily_first_id = daily_tracks.first().map(|track| track.id);
+        let daily_cover = daily_tracks
+            .first()
+            .and_then(|track| track.cover_url.clone());
+        let daily_card = home::HomePlaylistCard {
+            id: 0,
+            name: "每日推荐".to_string(),
+            subtitle: "根据你的口味更新".to_string(),
+            cover_url: daily_cover,
+        };
         let daily_root = root_entity.clone();
-        let daily_playlist_id = playlists.first().map(|item| item.id);
         rows.push(home::daily_featured_card(
-            home::HomePlaylistCard {
-                id: daily_playlist_id.unwrap_or_default(),
-                name: "每日推荐歌单".to_string(),
-                subtitle: "根据你的口味更新".to_string(),
-                cover_url: playlists.first().and_then(|item| item.cover_url.clone()),
+            daily_card,
+            {
+                let daily_root = daily_root.clone();
+                move |cx| {
+                    daily_root.update(cx, |this, _| {
+                        if is_user_logged_in {
+                            this.queue_kernel_command(AppCommand::Navigate(
+                                "/daily/songs".to_string(),
+                            ));
+                        } else {
+                            this.queue_kernel_command(AppCommand::Navigate("/login".to_string()));
+                        }
+                    });
+                }
             },
             move |cx| {
                 daily_root.update(cx, |this, _| {
                     if is_user_logged_in {
-                        if let Some(playlist_id) = daily_playlist_id {
-                            this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(playlist_id));
-                        } else {
-                            this.queue_kernel_command(AppCommand::Navigate("/explore".to_string()));
-                        }
+                        this.queue_kernel_command(AppCommand::ReplaceQueueFromDailyTracks(
+                            daily_first_id,
+                        ));
                     } else {
                         this.queue_kernel_command(AppCommand::Navigate("/login".to_string()));
                     }
@@ -67,36 +80,48 @@ impl RootView {
             },
         ));
 
-        let fm_root = root_entity.clone();
-        rows.push(home::fm_featured_card(
-            home::HomePlaylistCard {
+        let fm_card = fm_track
+            .map(|track| home::HomePlaylistCard {
+                id: track.id,
+                name: track.name.clone(),
+                subtitle: track.artists.clone(),
+                cover_url: track.cover_url.clone(),
+            })
+            .unwrap_or(home::HomePlaylistCard {
                 id: 0,
                 name: "私人 FM".to_string(),
                 subtitle: "连续播放你可能喜欢的音乐".to_string(),
-                cover_url: playlists.get(1).and_then(|item| item.cover_url.clone()),
-            },
-            move |cx| {
-                fm_root.update(cx, |this, _| {
-                    let target = if is_user_logged_in {
-                        "/library"
+                cover_url: None,
+            });
+        let fm_root = root_entity.clone();
+        let fm_track = fm_track.cloned();
+        rows.push(home::fm_featured_card(fm_card, move |cx| {
+            fm_root.update(cx, |this, _| {
+                if is_user_logged_in {
+                    if let Some(track) = fm_track.clone() {
+                        this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(SongInput {
+                            id: track.id,
+                            name: track.name,
+                            artists: track.artists,
+                        }));
                     } else {
-                        "/login"
-                    };
-                    this.queue_kernel_command(AppCommand::Navigate(target.to_string()));
-                });
-            },
-        ));
+                        this.queue_kernel_command(AppCommand::Navigate("/library".to_string()));
+                    }
+                } else {
+                    this.queue_kernel_command(AppCommand::Navigate("/login".to_string()));
+                }
+            });
+        }));
 
         rows
     }
-
     fn build_home_playlist_rows(
-        playlists: &[library::LibraryPlaylistCard],
+        playlists: &[library_actions::LibraryPlaylistItem],
         root_entity: &Entity<RootView>,
     ) -> Vec<AnyElement> {
         playlists
             .iter()
-            .take(15)
+            .take(10)
             .cloned()
             .map(|item| {
                 let playlist_id = item.id;
@@ -105,7 +130,7 @@ impl RootView {
                     home::HomePlaylistCard {
                         id: item.id,
                         name: item.name,
-                        subtitle: format!("{} 首 · by {}", item.track_count, item.creator_name),
+                        subtitle: item.creator_name,
                         cover_url: item.cover_url,
                     },
                     move |cx| {
@@ -113,6 +138,53 @@ impl RootView {
                             this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(playlist_id))
                         });
                     },
+                )
+            })
+            .collect()
+    }
+
+    fn build_home_artist_rows(artists: &[library_actions::ArtistItem]) -> Vec<AnyElement> {
+        artists
+            .iter()
+            .take(6)
+            .cloned()
+            .map(|artist| home::artist_card(artist.name, artist.cover_url, move |_cx| {}))
+            .collect()
+    }
+
+    fn build_home_album_rows(albums: &[library_actions::AlbumItem]) -> Vec<AnyElement> {
+        albums
+            .iter()
+            .take(10)
+            .cloned()
+            .map(|album| {
+                home::playlist_card(
+                    home::HomePlaylistCard {
+                        id: album.id,
+                        name: album.name,
+                        subtitle: album.artist_name,
+                        cover_url: album.cover_url,
+                    },
+                    move |_cx| {},
+                )
+            })
+            .collect()
+    }
+
+    fn build_home_toplist_rows(toplists: &[library_actions::ToplistItem]) -> Vec<AnyElement> {
+        toplists
+            .iter()
+            .take(10)
+            .cloned()
+            .map(|list| {
+                home::playlist_card(
+                    home::HomePlaylistCard {
+                        id: list.id,
+                        name: list.name,
+                        subtitle: list.update_frequency,
+                        cover_url: list.cover_url,
+                    },
+                    move |_cx| {},
                 )
             })
             .collect()
@@ -153,7 +225,7 @@ impl RootView {
     }
 
     fn build_library_rows(
-        playlists: &[library::LibraryPlaylistCard],
+        playlists: &[library_actions::LibraryPlaylistItem],
         root_entity: &Entity<RootView>,
     ) -> Vec<AnyElement> {
         playlists
@@ -162,17 +234,26 @@ impl RootView {
             .map(|item| {
                 let playlist_id = item.id;
                 let root_entity = root_entity.clone();
-                library::playlist_row(item, move |cx| {
-                    root_entity.update(cx, |this, _| {
-                        this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(playlist_id))
-                    });
-                })
+                library::playlist_row(
+                    library::LibraryPlaylistCard {
+                        id: item.id,
+                        name: item.name,
+                        track_count: item.track_count,
+                        creator_name: item.creator_name,
+                        cover_url: item.cover_url,
+                    },
+                    move |cx| {
+                        root_entity.update(cx, |this, _| {
+                            this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(playlist_id))
+                        });
+                    },
+                )
             })
             .collect()
     }
 
     fn build_discover_rows(
-        playlists: &[library::LibraryPlaylistCard],
+        playlists: &[library_actions::LibraryPlaylistItem],
         root_entity: &Entity<RootView>,
     ) -> Vec<AnyElement> {
         playlists
@@ -208,51 +289,71 @@ impl RootView {
         model: RoutesModel,
     ) -> AnyElement {
         let RoutesModel {
-            home_playlists,
+            home_recommend_playlists: home_recommend_playlists_state,
+            home_recommend_artists: home_recommend_artists_state,
+            home_new_albums: home_new_albums_state,
+            home_toplists: home_toplists_state,
+            daily_tracks: daily_tracks_state,
+            personal_fm: personal_fm_state,
             is_user_logged_in,
-            home_loading,
-            home_error,
-            discover_playlists,
-            discover_loading,
-            discover_error,
-            search_results,
-            search_loading,
-            search_error,
-            library_playlists,
-            library_loading,
-            library_error,
-            playlist_pages,
+            discover_playlists: discover_playlists_state,
+            search_state,
+            library_playlists: library_playlists_state,
+            playlist_state: playlist_state_state,
             page_scroll_handle,
-            playlist_loading,
-            playlist_error,
             auth_account_summary,
             login_model,
             close_behavior_label,
         } = model;
 
+        let home_loading = home_recommend_playlists_state.loading
+            || home_recommend_artists_state.loading
+            || home_new_albums_state.loading
+            || home_toplists_state.loading
+            || daily_tracks_state.loading
+            || personal_fm_state.loading;
+        let home_error = home_recommend_playlists_state
+            .error
+            .as_deref()
+            .or(home_recommend_artists_state.error.as_deref())
+            .or(home_new_albums_state.error.as_deref())
+            .or(home_toplists_state.error.as_deref())
+            .or(daily_tracks_state.error.as_deref())
+            .or(personal_fm_state.error.as_deref());
+
         Routes::new()
             .basename("/")
             .child(Route::new().index().element({
                 let root_entity = root_entity.clone();
-                let home_playlists = home_playlists.clone();
-                let home_error = home_error.clone();
+                let home_playlists = home_recommend_playlists_state.data.clone();
+                let artist_rows = home_recommend_artists_state.data.clone();
+                let album_rows = home_new_albums_state.data.clone();
+                let toplist_rows = home_toplists_state.data.clone();
+                let daily_tracks = daily_tracks_state.data.clone();
+                let personal_fm = personal_fm_state.data.clone();
+                let home_error = home_error.map(str::to_string);
                 move |_, _| {
                     home::render(
                         home_loading,
                         home_error.as_deref(),
                         Self::build_home_featured_rows(
-                            &home_playlists,
+                            &daily_tracks,
+                            personal_fm.as_ref(),
                             &root_entity,
                             is_user_logged_in,
                         ),
                         Self::build_home_playlist_rows(&home_playlists, &root_entity),
+                        Self::build_home_artist_rows(&artist_rows),
+                        Self::build_home_album_rows(&album_rows),
+                        Self::build_home_toplist_rows(&toplist_rows),
                     )
                 }
             }))
             .child(Route::new().path("explore").element({
                 let root_entity = root_entity.clone();
-                let discover_playlists = discover_playlists.clone();
-                let discover_error = discover_error.clone();
+                let discover_playlists = discover_playlists_state.data.clone();
+                let discover_loading = discover_playlists_state.loading;
+                let discover_error = discover_playlists_state.error.clone();
                 move |_, _| {
                     discover::render(
                         discover_loading,
@@ -263,8 +364,9 @@ impl RootView {
             }))
             .child(Route::new().path("library").element({
                 let root_entity = root_entity.clone();
-                let library_playlists = library_playlists.clone();
-                let library_error = library_error.clone();
+                let library_playlists = library_playlists_state.data.clone();
+                let library_loading = library_playlists_state.loading;
+                let library_error = library_playlists_state.error.clone();
                 let auth_account_summary = auth_account_summary.clone();
                 move |_, _| {
                     let rows = Self::build_library_rows(&library_playlists, &root_entity);
@@ -277,8 +379,9 @@ impl RootView {
                 }
             }))
             .child(Route::new().path("search").element({
-                let results = search_results.clone();
-                let error = search_error.clone();
+                let results = search_state.data.clone();
+                let search_loading = search_state.loading;
+                let error = search_state.error.clone();
                 let root_entity = root_entity.clone();
                 move |_, _| {
                     Self::render_search_route(
@@ -291,8 +394,9 @@ impl RootView {
                 }
             }))
             .child(Route::new().path("search/{keywords}").element({
-                let results = search_results.clone();
-                let error = search_error.clone();
+                let results = search_state.data.clone();
+                let search_loading = search_state.loading;
+                let error = search_state.error.clone();
                 let root_entity = root_entity.clone();
                 move |_, cx| {
                     let params = use_params(cx);
@@ -306,6 +410,83 @@ impl RootView {
                         error.as_deref(),
                         &results,
                         &root_entity,
+                    )
+                }
+            }))
+            .child(Route::new().path("daily/songs").element({
+                let daily_tracks = daily_tracks_state.data.clone();
+                let daily_loading = daily_tracks_state.loading;
+                let daily_error = daily_tracks_state.error.clone();
+                let root_entity = root_entity.clone();
+                move |_, _| {
+                    let rows = daily_tracks
+                        .iter()
+                        .cloned()
+                        .map(|track| {
+                            let play_track = search::SearchSong {
+                                id: track.id,
+                                name: track.name.clone(),
+                                artists: track.artists.clone(),
+                            };
+                            let queue_track = play_track.clone();
+                            let root_for_play = root_entity.clone();
+                            let root_for_queue = root_entity.clone();
+                            playlist::track_row(
+                                playlist::PlaylistTrackRow {
+                                    id: track.id,
+                                    name: track.name,
+                                    artists: track.artists,
+                                    cover_url: track.cover_url,
+                                },
+                                move |cx| {
+                                    root_for_play.update(cx, |this, _| {
+                                        this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(
+                                            SongInput {
+                                                id: play_track.id,
+                                                name: play_track.name.clone(),
+                                                artists: play_track.artists.clone(),
+                                            },
+                                        ))
+                                    });
+                                },
+                                move |cx| {
+                                    root_for_queue.update(cx, |this, _| {
+                                        this.queue_kernel_command(AppCommand::EnqueueSongOnly(
+                                            SongInput {
+                                                id: queue_track.id,
+                                                name: queue_track.name.clone(),
+                                                artists: queue_track.artists.clone(),
+                                            },
+                                        ))
+                                    });
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>();
+
+                    let replace_button = if daily_tracks.is_empty() {
+                        None
+                    } else {
+                        let track_id = daily_tracks.first().map(|track| track.id);
+                        let root_for_replace = root_entity.clone();
+                        Some(
+                            button::primary_pill("替换队列并播放")
+                                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                                    root_for_replace.update(cx, |this, _| {
+                                        this.queue_kernel_command(
+                                            AppCommand::ReplaceQueueFromDailyTracks(track_id),
+                                        )
+                                    });
+                                })
+                                .into_any_element(),
+                        )
+                    };
+
+                    daily_tracks::render(
+                        daily_loading,
+                        daily_error.as_deref(),
+                        rows,
+                        replace_button,
                     )
                 }
             }))
@@ -389,8 +570,9 @@ impl RootView {
             }))
             .child(Route::new().path("playlist/{id}").element({
                 let root_entity = root_entity.clone();
-                let playlist_pages = playlist_pages.clone();
-                let playlist_error = playlist_error.clone();
+                let playlist_pages = playlist_state_state.data.clone();
+                let playlist_loading = playlist_state_state.loading;
+                let playlist_error = playlist_state_state.error.clone();
                 let page_scroll_handle = page_scroll_handle.clone();
                 move |_, cx| {
                     let params = use_params(cx);

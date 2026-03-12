@@ -6,6 +6,7 @@ use nekowg::{
 };
 
 pub type RouteParams = HashMap<SharedString, SharedString>;
+type RouteElement<T> = Box<dyn Fn(&RouteParams, &mut Context<T>) -> AnyElement>;
 
 #[derive(Debug, Clone)]
 pub struct Location {
@@ -58,7 +59,7 @@ pub fn navigate<T>(cx: &mut Context<T>, path: impl Into<SharedString>) {
 pub struct Route<T> {
     path: Option<SharedString>,
     index: bool,
-    element: Option<Box<dyn Fn(&RouteParams, &mut Context<T>) -> AnyElement>>,
+    element: Option<RouteElement<T>>,
 }
 
 impl<T> Route<T> {
@@ -122,10 +123,10 @@ impl<T> Routes<T> {
                 return render_route(route, RouteParams::default(), cx);
             }
 
-            if let Some(route_path) = route.path.as_ref() {
-                if let Some(params) = match_route(route_path, relative) {
-                    return render_route(route, params, cx);
-                }
+            if let Some(route_path) = route.path.as_ref()
+                && let Some(params) = match_route(route_path, relative)
+            {
+                return render_route(route, params, cx);
             }
         }
 

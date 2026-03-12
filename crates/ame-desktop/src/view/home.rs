@@ -1,4 +1,7 @@
-use nekowg::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb, rgba};
+use nekowg::{
+    AnyElement, App, FontWeight, MouseButton, ObjectFit, TextAlign, div, img, linear_color_stop,
+    linear_gradient, prelude::*, px, relative, rgb, rgba,
+};
 
 use crate::view::common;
 use crate::{
@@ -21,8 +24,9 @@ pub struct HomePlaylistCard {
 pub fn daily_featured_card(
     item: HomePlaylistCard,
     on_open: impl Fn(&mut App) + 'static,
+    on_play: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
-    featured_daily_card(item, on_open)
+    featured_daily_card(item, on_open, on_play)
 }
 
 pub fn fm_featured_card(
@@ -32,7 +36,64 @@ pub fn fm_featured_card(
     featured_fm_card(item, on_open)
 }
 
-fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
+pub fn artist_card(
+    name: String,
+    cover_url: Option<String>,
+    on_open: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    let mut avatar = div()
+        .w_full()
+        .relative()
+        .pb(relative(1.0))
+        .rounded_full()
+        .overflow_hidden();
+
+    if let Some(url) = cover_url.as_deref() {
+        avatar = avatar.child(
+            img(image_resize_url(url, "256y256"))
+                .id(format!("home-artist-{url}"))
+                .absolute()
+                .left(px(0.))
+                .top(px(0.))
+                .right(px(0.))
+                .bottom(px(0.))
+                .size_full()
+                .object_fit(ObjectFit::Cover)
+                .rounded_full(),
+        );
+    } else {
+        avatar = avatar.bg(rgb(0x3B3B3B));
+    }
+
+    div()
+        .w_full()
+        .cursor_pointer()
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
+        .child(
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .items_center()
+                .child(avatar)
+                .child(
+                    div()
+                        .mt(px(12.))
+                        .text_size(px(15.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_align(TextAlign::Center)
+                        .overflow_hidden()
+                        .child(name),
+                ),
+        )
+        .into_any_element()
+}
+
+fn featured_daily_card(
+    item: HomePlaylistCard,
+    on_open: impl Fn(&mut App) + 'static,
+    on_play: impl Fn(&mut App) + 'static,
+) -> AnyElement {
     let cover = item.cover_url.clone();
     div()
         .w_full()
@@ -43,7 +104,7 @@ fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'sta
         .relative()
         .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
         .child(match cover {
-            Some(url) => img(image_resize_url(&url, "256y256"))
+            Some(url) => img(image_resize_url(&url, "512y512"))
                 .id(format!("home-daily-featured-{}", &url))
                 .w_full()
                 .h_full()
@@ -95,6 +156,10 @@ fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'sta
                 .flex()
                 .justify_center()
                 .items_center()
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    cx.stop_propagation();
+                    on_play(cx);
+                })
                 .child(icon::render(IconName::Play, 18.0, theme::COLOR_TEXT_DARK)),
         )
         .into_any_element()
@@ -102,98 +167,104 @@ fn featured_daily_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'sta
 
 fn featured_fm_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
     let cover = item.cover_url.clone();
-    div()
+    let mut card = div()
         .w_full()
         .h(px(198.))
         .rounded_xl()
         .overflow_hidden()
         .cursor_pointer()
-        .bg(rgb(0x8D8D8D))
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
-        .child(
-            div()
-                .size_full()
-                .px(px(20.))
-                .py(px(18.))
-                .flex()
-                .gap(px(16.))
-                .child(match cover {
-                    Some(url) => img(image_resize_url(&url, "256y256"))
-                        .id(format!("home-fm-featured-{}", &url))
-                        .w(px(162.))
-                        .h(px(162.))
-                        .rounded_lg()
-                        .overflow_hidden()
-                        .into_any_element(),
-                    None => div()
-                        .w(px(162.))
-                        .h(px(162.))
-                        .rounded_lg()
-                        .bg(rgb(0x6F6F6F))
-                        .into_any_element(),
-                })
-                .child(
-                    div()
-                        .flex_grow()
-                        .h_full()
-                        .flex()
-                        .flex_col()
-                        .justify_between()
-                        .child(
-                            div()
-                                .overflow_hidden()
-                                .child(
-                                    div()
-                                        .text_size(px(50.))
-                                        .line_height(px(44.))
-                                        .font_weight(FontWeight::BOLD)
-                                        .text_color(rgb(theme::COLOR_TEXT_DARK))
-                                        .overflow_hidden()
-                                        .child(item.name),
-                                )
-                                .child(
-                                    div()
-                                        .mt(px(4.))
-                                        .text_size(px(16.))
-                                        .text_color(rgba(theme::with_alpha(0xFFFFFF, 0xA8)))
-                                        .overflow_hidden()
-                                        .child(item.subtitle),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .flex()
-                                .justify_between()
-                                .items_end()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(12.))
-                                        .child(icon_button(IconName::ThumbsDown))
-                                        .child(icon_button(IconName::Play))
-                                        .child(icon_button(IconName::Next)),
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(6.))
-                                        .text_size(px(18.))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(rgb(theme::COLOR_SECONDARY))
-                                        .child(icon::render(
-                                            IconName::Fm,
-                                            16.0,
-                                            theme::COLOR_SECONDARY,
-                                        ))
-                                        .child("私人FM"),
-                                ),
-                        ),
-                ),
-        )
-        .into_any_element()
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx));
+
+    if let Some(url) = cover.as_deref() {
+        card = card.bg(gradient_from_seed(url));
+    } else {
+        card = card.bg(rgb(0x8D8D8D));
+    }
+
+    card.child(
+        div()
+            .size_full()
+            .px(px(16.))
+            .py(px(14.))
+            .flex()
+            .gap(px(16.))
+            .child(match cover {
+                Some(url) => img(image_resize_url(&url, "256y256"))
+                    .id(format!("home-fm-featured-{}", &url))
+                    .w(px(169.))
+                    .h(px(169.))
+                    .rounded_lg()
+                    .overflow_hidden()
+                    .into_any_element(),
+                None => div()
+                    .w(px(162.))
+                    .h(px(162.))
+                    .rounded_lg()
+                    .bg(rgb(0x6F6F6F))
+                    .into_any_element(),
+            })
+            .child(
+                div()
+                    .flex_grow()
+                    .min_w(px(0.))
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .justify_between()
+                    .child(
+                        div()
+                            .pt(px(4.))
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .text_size(px(28.))
+                                    .line_height(px(28.))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(rgb(theme::COLOR_TEXT_DARK))
+                                    .truncate()
+                                    .child(item.name),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(4.))
+                                    .text_size(px(15.))
+                                    .text_color(rgba(theme::with_alpha(0xFFFFFF, 0xA8)))
+                                    .overflow_hidden()
+                                    .child(item.subtitle),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .justify_between()
+                            .items_end()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(12.))
+                                    .child(icon_button(IconName::ThumbsDown))
+                                    .child(icon_button(IconName::Play))
+                                    .child(icon_button(IconName::Next)),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.))
+                                    .text_size(px(16.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .opacity(0.38)
+                                    .text_color(rgb(theme::COLOR_TEXT_DARK))
+                                    .child(icon::render(IconName::Fm, 16.0, theme::COLOR_TEXT_DARK))
+                                    .child("私人FM"),
+                            ),
+                    ),
+            ),
+    )
+    .into_any_element()
 }
 
 fn icon_button(icon_name: IconName) -> AnyElement {
@@ -216,6 +287,39 @@ fn icon_button(icon_name: IconName) -> AnyElement {
         style,
     )
     .into_any_element()
+}
+
+fn gradient_from_seed(seed: &str) -> nekowg::Background {
+    let base = color_from_seed(seed);
+    let darker = shift_color(base, -32);
+    let lighter = shift_color(base, 28);
+    linear_gradient(
+        120.0,
+        linear_color_stop(rgb(lighter), 0.0),
+        linear_color_stop(rgb(darker), 1.0),
+    )
+}
+
+fn color_from_seed(seed: &str) -> u32 {
+    let mut hash = 2166136261u32;
+    for byte in seed.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16777619);
+    }
+    let r = ((hash >> 16) & 0xFF) as u8;
+    let g = ((hash >> 8) & 0xFF) as u8;
+    let b = (hash & 0xFF) as u8;
+    ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
+
+fn shift_color(color: u32, delta: i16) -> u32 {
+    let r = ((color >> 16) & 0xFF) as i16 + delta;
+    let g = ((color >> 8) & 0xFF) as i16 + delta;
+    let b = (color & 0xFF) as i16 + delta;
+    let r = r.clamp(0, 255) as u32;
+    let g = g.clamp(0, 255) as u32;
+    let b = b.clamp(0, 255) as u32;
+    (r << 16) | (g << 8) | b
 }
 
 pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
@@ -243,6 +347,7 @@ pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'stati
             div()
                 .mt(px(8.))
                 .text_size(px(16.))
+                .line_height(relative(1.2))
                 .font_weight(FontWeight::BOLD)
                 .overflow_hidden()
                 .child(item.name),
@@ -250,7 +355,9 @@ pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'stati
         .child(
             div()
                 .mt(px(2.))
-                .text_size(px(13.))
+                .text_size(px(12.))
+                .line_height(relative(1.2))
+                .font_weight(FontWeight::BOLD)
                 .text_color(rgb(theme::COLOR_SECONDARY))
                 .overflow_hidden()
                 .child(item.subtitle),
@@ -263,6 +370,9 @@ pub fn render(
     error: Option<&str>,
     featured_rows: Vec<AnyElement>,
     playlist_rows: Vec<AnyElement>,
+    artist_rows: Vec<AnyElement>,
+    album_rows: Vec<AnyElement>,
+    toplist_rows: Vec<AnyElement>,
 ) -> AnyElement {
     let status = common::status_banner(loading, error, "加载中...", "加载失败");
 
@@ -286,25 +396,10 @@ pub fn render(
             .into_any_element()
     };
 
-    let playlists = if playlist_rows.is_empty() {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_CARD_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child("暂无推荐歌单")
-            .into_any_element()
-    } else {
-        playlist_rows
-            .into_iter()
-            .fold(
-                div().w_full().grid().grid_cols(5).gap(px(18.)),
-                |grid, item| grid.child(item),
-            )
-            .into_any_element()
-    };
+    let playlists = grid_section(playlist_rows, "暂无推荐歌单", 5);
+    let artists = grid_section(artist_rows, "暂无推荐艺人", 6);
+    let albums = grid_section(album_rows, "暂无新碟", 5);
+    let toplists = grid_section(toplist_rows, "暂无榜单", 5);
 
     div()
         .w_full()
@@ -324,12 +419,63 @@ pub fn render(
         .child(
             div()
                 .w_full()
-                .mt(px(32.))
-                .mb(px(18.))
+                .mt(px(36.))
+                .mb(px(14.))
                 .text_size(px(26.))
                 .font_weight(FontWeight::BOLD)
                 .child("推荐歌单"),
         )
         .child(playlists)
+        .child(
+            div()
+                .w_full()
+                .mt(px(40.))
+                .mb(px(14.))
+                .text_size(px(26.))
+                .font_weight(FontWeight::BOLD)
+                .child("推荐艺人"),
+        )
+        .child(artists)
+        .child(
+            div()
+                .w_full()
+                .mt(px(40.))
+                .mb(px(14.))
+                .text_size(px(26.))
+                .font_weight(FontWeight::BOLD)
+                .child("新碟上架"),
+        )
+        .child(albums)
+        .child(
+            div()
+                .w_full()
+                .mt(px(40.))
+                .mb(px(14.))
+                .text_size(px(26.))
+                .font_weight(FontWeight::BOLD)
+                .child("榜单"),
+        )
+        .child(toplists)
         .into_any_element()
+}
+
+fn grid_section(rows: Vec<AnyElement>, empty_label: &'static str, columns: usize) -> AnyElement {
+    if rows.is_empty() {
+        div()
+            .w_full()
+            .rounded_lg()
+            .bg(rgb(theme::COLOR_CARD_DARK))
+            .px_4()
+            .py_3()
+            .text_color(rgb(theme::COLOR_SECONDARY))
+            .child(empty_label)
+            .into_any_element()
+    } else {
+        rows.into_iter()
+            .fold(
+                div().w_full().grid().grid_cols(columns as u16).gap(px(18.)),
+                |grid, item| grid.child(item),
+            )
+            .into_any_element()
+    }
 }

@@ -106,7 +106,7 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
     };
 
     let cover = if let Some(url) = model.current_cover_url.as_ref() {
-        img(image_resize_url(&url, "48y48"))
+        img(image_resize_url(url, "64y64"))
             .size(px(46.))
             .rounded_md()
             .into_any_element()

@@ -5,12 +5,15 @@ use ame_audio::{AudioCommand, AudioError, SeekTarget, SourceSpec};
 use nekowg::{Image, ImageFormat};
 use qrcode::{QrCode, render::svg};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::action::{auth_actions, library_actions, player_actions, queue_actions, search_actions};
 use crate::entity::app::CloseBehavior;
 use crate::entity::player::QueueItem;
 use crate::kernel::{AppCommand, AppEvent, KernelCommandSender, SongInput};
-use crate::view::{library, playlist, search};
+use crate::view::{playlist, search};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use super::{
     KEY_PLAYER_CURRENT_INDEX, KEY_PLAYER_DURATION_MS, KEY_PLAYER_MODE, KEY_PLAYER_POSITION_MS,
@@ -22,6 +25,22 @@ use super::{
 enum AuthLevel {
     Guest,
     User,
+}
+
+const HOME_RECOMMEND_TTL: Duration = Duration::from_secs(30 * 60);
+const HOME_DAILY_TRACKS_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+const HOME_PERSONAL_FM_TTL: Duration = Duration::from_secs(3 * 60);
+const HOME_RECOMMEND_ARTISTS_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+const HOME_NEW_ALBUMS_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+const HOME_TOPLIST_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+const DISCOVER_PLAYLIST_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+const LIBRARY_PLAYLIST_TTL: Duration = Duration::from_secs(2 * 60);
+const PLAYLIST_DETAIL_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CacheEntry<T> {
+    fetched_at_ms: u64,
+    data: T,
 }
 
 impl RootView {
@@ -57,6 +76,9 @@ impl RootView {
             }
             AppCommand::ReplaceQueueFromPlaylist(playlist_id) => {
                 self.replace_queue_from_playlist(playlist_id, cx)
+            }
+            AppCommand::ReplaceQueueFromDailyTracks(track_id) => {
+                self.replace_queue_from_daily_tracks(track_id, cx)
             }
             AppCommand::EnqueueSongAndPlay(song) => {
                 self.enqueue_song_from_route(song_input_to_search_song(song), cx)
@@ -242,12 +264,59 @@ impl RootView {
         self.persist_player_progress(cx);
     }
 
+    fn now_millis() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or_default()
+    }
+
+    fn cache_is_fresh(fetched_at_ms: u64, ttl: Duration) -> bool {
+        let ttl_ms = ttl.as_millis() as u64;
+        let now_ms = Self::now_millis();
+        now_ms.saturating_sub(fetched_at_ms) <= ttl_ms
+    }
+
+    fn read_cache<T: DeserializeOwned>(&self, key: &str, ttl: Duration) -> Option<CacheEntry<T>> {
+        let store = self.cache_store.as_ref()?;
+        let entry: CacheEntry<T> = store.get(key).ok().flatten()?;
+        if Self::cache_is_fresh(entry.fetched_at_ms, ttl) {
+            Some(entry)
+        } else {
+            None
+        }
+    }
+
+    fn write_cache<T: Serialize>(&self, key: &str, data: &T) -> Option<u64> {
+        let store = self.cache_store.as_ref()?;
+        let fetched_at_ms = Self::now_millis();
+        let entry = CacheEntry {
+            fetched_at_ms,
+            data,
+        };
+        if store.upsert(key, &entry).is_ok() {
+            Some(fetched_at_ms)
+        } else {
+            None
+        }
+    }
+
     pub(super) fn refresh_login_summary(&mut self) {
         if self.auth_bundle.music_u.is_none() {
             self.auth_account_summary = None;
             self.auth_user_id = None;
-            self.library_playlists.clear();
-            self.playlist_pages.clear();
+            self.library_playlists.data.clear();
+            self.library_playlists.error = None;
+            self.library_playlists.loading = false;
+            self.playlist_state.data.clear();
+            self.playlist_state.error = None;
+            self.daily_tracks.data.clear();
+            self.daily_tracks.error = None;
+            self.daily_tracks.loading = false;
+            self.personal_fm.data = None;
+            self.personal_fm.error = None;
+            self.personal_fm.loading = false;
+            self.refresh_home_data();
             return;
         }
         let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
@@ -262,7 +331,7 @@ impl RootView {
                     .as_i64()
                     .or_else(|| body["data"]["profile"]["userId"].as_i64());
                 self.refresh_library_playlists();
-                self.refresh_home_playlists();
+                self.refresh_home_data();
                 self.refresh_discover_playlists();
             }
             Err(err) => {
@@ -275,96 +344,462 @@ impl RootView {
 
     pub(super) fn refresh_library_playlists(&mut self) {
         let Some(user_id) = self.auth_user_id else {
-            self.library_playlists.clear();
-            self.library_error = None;
-            self.library_loading = false;
+            self.library_playlists.data.clear();
+            self.library_playlists.error = None;
+            self.library_playlists.loading = false;
             return;
         };
 
-        self.library_loading = true;
-        self.library_error = None;
+        if let Some(fetched_at_ms) = self.library_playlists.fetched_at_ms
+            && Self::cache_is_fresh(fetched_at_ms, LIBRARY_PLAYLIST_TTL)
+        {
+            return;
+        }
+
+        self.library_playlists.loading = true;
+        self.library_playlists.error = None;
+        self.library_playlists.source = super::DataSource::User;
         let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
-            self.library_loading = false;
-            self.library_error = Some("缺少鉴权凭据".to_string());
+            self.library_playlists.loading = false;
+            self.library_playlists.error = Some("缺少鉴权凭据".to_string());
             return;
         };
         match library_actions::fetch_user_playlists_blocking(user_id, cookie.as_str()) {
             Ok(items) => {
-                self.library_playlists = items
-                    .into_iter()
-                    .map(|item| library::LibraryPlaylistCard {
-                        id: item.id,
-                        name: item.name,
-                        track_count: item.track_count,
-                        creator_name: item.creator_name,
-                        cover_url: item.cover_url,
-                    })
-                    .collect();
+                self.library_playlists.data = items;
+                self.library_playlists.fetched_at_ms = Some(Self::now_millis());
             }
             Err(err) => {
-                self.library_playlists.clear();
-                self.library_error = Some(err.to_string());
+                self.library_playlists.data.clear();
+                self.library_playlists.error = Some(err.to_string());
             }
         }
-        self.library_loading = false;
+        self.library_playlists.loading = false;
     }
 
-    pub(super) fn refresh_home_playlists(&mut self) {
-        self.home_loading = true;
-        self.home_error = None;
-        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
-            self.home_loading = false;
-            self.home_error = Some("缺少鉴权凭据".to_string());
+    pub(super) fn refresh_home_data(&mut self) {
+        self.refresh_home_recommend_playlists();
+        self.refresh_home_recommend_artists();
+        self.refresh_home_new_albums();
+        self.refresh_home_toplists();
+        if self.has_user_token() {
+            self.refresh_daily_tracks();
+            self.refresh_personal_fm();
+        } else {
+            self.daily_tracks.data.clear();
+            self.daily_tracks.error = None;
+            self.daily_tracks.loading = false;
+            self.personal_fm.data = None;
+            self.personal_fm.error = None;
+            self.personal_fm.loading = false;
+        }
+    }
+
+    fn refresh_home_recommend_playlists(&mut self) {
+        self.home_recommend_playlists.loading = true;
+        self.home_recommend_playlists.error = None;
+        let Some(guest_cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+            self.home_recommend_playlists.loading = false;
+            self.home_recommend_playlists.error = Some("缺少鉴权凭据".to_string());
             return;
         };
-        match library_actions::fetch_top_playlists_blocking(20, 0, cookie.as_str()) {
-            Ok(items) => {
-                self.home_playlists = items
-                    .into_iter()
-                    .map(|item| library::LibraryPlaylistCard {
-                        id: item.id,
-                        name: item.name,
-                        track_count: item.track_count,
-                        creator_name: item.creator_name,
-                        cover_url: item.cover_url,
-                    })
-                    .collect();
-            }
-            Err(err) => {
-                self.home_playlists.clear();
-                self.home_error = Some(err.to_string());
+
+        let is_user = self.has_user_token();
+        let mut cache_key = if is_user {
+            self.auth_user_id
+                .map(|user_id| format!("home.recommend_playlists.user.{user_id}"))
+        } else {
+            Some("home.recommend_playlists.guest".to_string())
+        };
+        if let Some(key) = cache_key.as_deref()
+            && let Some(entry) = self.read_cache(key, HOME_RECOMMEND_TTL)
+        {
+            self.home_recommend_playlists.data = entry.data;
+            self.home_recommend_playlists.fetched_at_ms = Some(entry.fetched_at_ms);
+            self.home_recommend_playlists.loading = false;
+            self.home_recommend_playlists.source = if is_user {
+                super::DataSource::User
+            } else {
+                super::DataSource::Guest
+            };
+            return;
+        }
+
+        let limit = 10;
+        let mut merged = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut use_cookie = guest_cookie;
+        if is_user {
+            if let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) {
+                use_cookie = cookie;
+            } else {
+                cache_key = None;
             }
         }
-        self.home_loading = false;
+
+        if is_user
+            && let Ok(recommend) =
+                library_actions::fetch_daily_recommend_playlists_blocking(use_cookie.as_str())
+        {
+            for item in recommend {
+                if seen.insert(item.id) {
+                    merged.push(item);
+                }
+            }
+        }
+        match library_actions::fetch_personalized_playlists_blocking(limit, use_cookie.as_str()) {
+            Ok(items) => {
+                for item in items {
+                    if seen.insert(item.id) {
+                        merged.push(item);
+                    }
+                }
+            }
+            Err(err) => {
+                self.home_recommend_playlists.error = Some(err.to_string());
+            }
+        }
+
+        if merged.len() > limit as usize {
+            merged.truncate(limit as usize);
+        }
+        self.home_recommend_playlists.data = merged;
+        if let Some(key) = cache_key.as_deref()
+            && let Some(fetched_at_ms) = self.write_cache(key, &self.home_recommend_playlists.data)
+        {
+            self.home_recommend_playlists.fetched_at_ms = Some(fetched_at_ms);
+        }
+        self.home_recommend_playlists.loading = false;
+        self.home_recommend_playlists.source = if is_user {
+            super::DataSource::User
+        } else {
+            super::DataSource::Guest
+        };
+    }
+
+    fn refresh_home_recommend_artists(&mut self) {
+        self.home_recommend_artists.loading = true;
+        self.home_recommend_artists.error = None;
+        let is_user = self.has_user_token();
+        let mut cache_key = if is_user {
+            self.auth_user_id
+                .map(|user_id| format!("home.recommend_artists.user.{user_id}.6"))
+        } else {
+            Some("home.recommend_artists.guest.6".to_string())
+        };
+
+        if let Some(key) = cache_key.as_deref()
+            && let Some(entry) = self.read_cache(key, HOME_RECOMMEND_ARTISTS_TTL)
+        {
+            self.home_recommend_artists.data = entry.data;
+            self.home_recommend_artists.fetched_at_ms = Some(entry.fetched_at_ms);
+            self.home_recommend_artists.loading = false;
+            self.home_recommend_artists.source = if is_user {
+                super::DataSource::User
+            } else {
+                super::DataSource::Guest
+            };
+            return;
+        }
+
+        let cookie = if is_user {
+            if let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) {
+                cookie
+            } else {
+                cache_key = None;
+                let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                    self.home_recommend_artists.loading = false;
+                    self.home_recommend_artists.error = Some("缺少鉴权凭据".to_string());
+                    return;
+                };
+                cookie
+            }
+        } else {
+            let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                self.home_recommend_artists.loading = false;
+                self.home_recommend_artists.error = Some("缺少鉴权凭据".to_string());
+                return;
+            };
+            cookie
+        };
+
+        match library_actions::fetch_recommend_artists_blocking(1, 6, cookie.as_str()) {
+            Ok(items) => {
+                self.home_recommend_artists.data = items;
+                if let Some(key) = cache_key.as_deref()
+                    && let Some(fetched_at_ms) =
+                        self.write_cache(key, &self.home_recommend_artists.data)
+                {
+                    self.home_recommend_artists.fetched_at_ms = Some(fetched_at_ms);
+                }
+            }
+            Err(err) => {
+                self.home_recommend_artists.error = Some(err.to_string());
+                self.home_recommend_artists.data.clear();
+            }
+        }
+        self.home_recommend_artists.loading = false;
+    }
+
+    fn refresh_home_new_albums(&mut self) {
+        self.home_new_albums.loading = true;
+        self.home_new_albums.error = None;
+        let is_user = self.has_user_token();
+        let mut cache_key = if is_user {
+            self.auth_user_id
+                .map(|user_id| format!("home.new_albums.user.{user_id}"))
+        } else {
+            Some("home.new_albums.guest".to_string())
+        };
+
+        if let Some(key) = cache_key.as_deref()
+            && let Some(entry) = self.read_cache(key, HOME_NEW_ALBUMS_TTL)
+        {
+            self.home_new_albums.data = entry.data;
+            self.home_new_albums.fetched_at_ms = Some(entry.fetched_at_ms);
+            self.home_new_albums.loading = false;
+            self.home_new_albums.source = if is_user {
+                super::DataSource::User
+            } else {
+                super::DataSource::Guest
+            };
+            return;
+        }
+
+        let cookie = if is_user {
+            if let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) {
+                cookie
+            } else {
+                cache_key = None;
+                let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                    self.home_new_albums.loading = false;
+                    self.home_new_albums.error = Some("缺少鉴权凭据".to_string());
+                    return;
+                };
+                cookie
+            }
+        } else {
+            let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                self.home_new_albums.loading = false;
+                self.home_new_albums.error = Some("缺少鉴权凭据".to_string());
+                return;
+            };
+            cookie
+        };
+
+        match library_actions::fetch_new_albums_blocking(10, 0, "ALL", cookie.as_str()) {
+            Ok(items) => {
+                self.home_new_albums.data = items;
+                if let Some(key) = cache_key.as_deref()
+                    && let Some(fetched_at_ms) = self.write_cache(key, &self.home_new_albums.data)
+                {
+                    self.home_new_albums.fetched_at_ms = Some(fetched_at_ms);
+                }
+            }
+            Err(err) => {
+                self.home_new_albums.error = Some(err.to_string());
+                self.home_new_albums.data.clear();
+            }
+        }
+        self.home_new_albums.loading = false;
+    }
+
+    fn refresh_home_toplists(&mut self) {
+        self.home_toplists.loading = true;
+        self.home_toplists.error = None;
+        let is_user = self.has_user_token();
+        let mut cache_key = if is_user {
+            self.auth_user_id
+                .map(|user_id| format!("home.toplists.user.{user_id}"))
+        } else {
+            Some("home.toplists.guest".to_string())
+        };
+
+        if let Some(key) = cache_key.as_deref()
+            && let Some(entry) = self.read_cache(key, HOME_TOPLIST_TTL)
+        {
+            self.home_toplists.data = entry.data;
+            self.home_toplists.fetched_at_ms = Some(entry.fetched_at_ms);
+            self.home_toplists.loading = false;
+            self.home_toplists.source = if is_user {
+                super::DataSource::User
+            } else {
+                super::DataSource::Guest
+            };
+            return;
+        }
+
+        let cookie = if is_user {
+            if let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) {
+                cookie
+            } else {
+                cache_key = None;
+                let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                    self.home_toplists.loading = false;
+                    self.home_toplists.error = Some("缺少鉴权凭据".to_string());
+                    return;
+                };
+                cookie
+            }
+        } else {
+            let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                self.home_toplists.loading = false;
+                self.home_toplists.error = Some("缺少鉴权凭据".to_string());
+                return;
+            };
+            cookie
+        };
+
+        match library_actions::fetch_toplists_blocking(cookie.as_str()) {
+            Ok(items) => {
+                self.home_toplists.data = items;
+                if let Some(key) = cache_key.as_deref()
+                    && let Some(fetched_at_ms) = self.write_cache(key, &self.home_toplists.data)
+                {
+                    self.home_toplists.fetched_at_ms = Some(fetched_at_ms);
+                }
+            }
+            Err(err) => {
+                self.home_toplists.error = Some(err.to_string());
+                self.home_toplists.data.clear();
+            }
+        }
+        self.home_toplists.loading = false;
+    }
+
+    fn refresh_daily_tracks(&mut self) {
+        if let Some(fetched_at_ms) = self.daily_tracks.fetched_at_ms
+            && Self::cache_is_fresh(fetched_at_ms, HOME_DAILY_TRACKS_TTL)
+        {
+            return;
+        }
+        self.daily_tracks.loading = true;
+        self.daily_tracks.error = None;
+        self.daily_tracks.source = super::DataSource::User;
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
+            self.daily_tracks.loading = false;
+            self.daily_tracks.error = Some("缺少鉴权凭据".to_string());
+            return;
+        };
+        let cache_key = self
+            .auth_user_id
+            .map(|user_id| format!("home.daily_tracks.user.{user_id}"));
+        if let Some(key) = cache_key.as_deref()
+            && let Some(entry) = self.read_cache(key, HOME_DAILY_TRACKS_TTL)
+        {
+            self.daily_tracks.data = entry.data;
+            self.daily_tracks.fetched_at_ms = Some(entry.fetched_at_ms);
+            self.daily_tracks.loading = false;
+            return;
+        }
+        match library_actions::fetch_daily_recommend_tracks_blocking(cookie.as_str()) {
+            Ok(items) => {
+                self.daily_tracks.data = items;
+                if let Some(key) = cache_key.as_deref() {
+                    if let Some(fetched_at_ms) = self.write_cache(key, &self.daily_tracks.data) {
+                        self.daily_tracks.fetched_at_ms = Some(fetched_at_ms);
+                    }
+                } else {
+                    self.daily_tracks.fetched_at_ms = Some(Self::now_millis());
+                }
+            }
+            Err(err) => {
+                self.daily_tracks.error = Some(err.to_string());
+                self.daily_tracks.data.clear();
+            }
+        }
+        self.daily_tracks.loading = false;
+    }
+
+    fn refresh_personal_fm(&mut self) {
+        if let Some(fetched_at_ms) = self.personal_fm.fetched_at_ms
+            && Self::cache_is_fresh(fetched_at_ms, HOME_PERSONAL_FM_TTL)
+        {
+            return;
+        }
+        self.personal_fm.loading = true;
+        self.personal_fm.error = None;
+        self.personal_fm.source = super::DataSource::User;
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
+            self.personal_fm.loading = false;
+            self.personal_fm.error = Some("缺少鉴权凭据".to_string());
+            return;
+        };
+        match library_actions::fetch_personal_fm_blocking(cookie.as_str()) {
+            Ok(track) => {
+                self.personal_fm.data = track;
+                self.personal_fm.fetched_at_ms = Some(Self::now_millis());
+            }
+            Err(err) => {
+                self.personal_fm.error = Some(err.to_string());
+                self.personal_fm.data = None;
+            }
+        }
+        self.personal_fm.loading = false;
     }
 
     pub(super) fn refresh_discover_playlists(&mut self) {
-        self.discover_loading = true;
-        self.discover_error = None;
-        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
-            self.discover_loading = false;
-            self.discover_error = Some("缺少鉴权凭据".to_string());
-            return;
+        self.discover_playlists.loading = true;
+        self.discover_playlists.error = None;
+        let is_user = self.has_user_token();
+        let mut cache_key = if is_user {
+            self.auth_user_id
+                .map(|user_id| format!("discover.top_playlists.user.{user_id}"))
+        } else {
+            Some("discover.top_playlists.guest".to_string())
         };
+
+        if let Some(key) = cache_key.as_deref()
+            && let Some(entry) = self.read_cache(key, DISCOVER_PLAYLIST_TTL)
+        {
+            self.discover_playlists.data = entry.data;
+            self.discover_playlists.fetched_at_ms = Some(entry.fetched_at_ms);
+            self.discover_playlists.loading = false;
+            self.discover_playlists.source = if is_user {
+                super::DataSource::User
+            } else {
+                super::DataSource::Guest
+            };
+            return;
+        }
+
+        let cookie = if is_user {
+            if let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) {
+                cookie
+            } else {
+                cache_key = None;
+                let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                    self.discover_playlists.loading = false;
+                    self.discover_playlists.error = Some("缺少鉴权凭据".to_string());
+                    return;
+                };
+                cookie
+            }
+        } else {
+            let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
+                self.discover_playlists.loading = false;
+                self.discover_playlists.error = Some("缺少鉴权凭据".to_string());
+                return;
+            };
+            cookie
+        };
+
         match library_actions::fetch_top_playlists_blocking(60, 0, cookie.as_str()) {
             Ok(items) => {
-                self.discover_playlists = items
-                    .into_iter()
-                    .map(|item| library::LibraryPlaylistCard {
-                        id: item.id,
-                        name: item.name,
-                        track_count: item.track_count,
-                        creator_name: item.creator_name,
-                        cover_url: item.cover_url,
-                    })
-                    .collect();
+                self.discover_playlists.data = items;
+                if let Some(key) = cache_key.as_deref()
+                    && let Some(fetched_at_ms) =
+                        self.write_cache(key, &self.discover_playlists.data)
+                {
+                    self.discover_playlists.fetched_at_ms = Some(fetched_at_ms);
+                }
             }
             Err(err) => {
-                self.discover_playlists.clear();
-                self.discover_error = Some(err.to_string());
+                self.discover_playlists.data.clear();
+                self.discover_playlists.error = Some(err.to_string());
             }
         }
-        self.discover_loading = false;
+        self.discover_playlists.loading = false;
     }
 
     fn build_playlist_page_from_remote(
@@ -388,6 +823,7 @@ impl RootView {
                     id: track.id,
                     name: track.name,
                     artists: track.artists,
+                    cover_url: track.cover_url,
                 })
                 .collect(),
         })
@@ -397,27 +833,45 @@ impl RootView {
         &mut self,
         playlist_id: i64,
     ) -> Result<playlist::PlaylistPage, String> {
-        if let Some(page) = self.playlist_pages.get(&playlist_id).cloned() {
+        if let Some(page) = self.playlist_state.data.get(&playlist_id).cloned() {
             return Ok(page);
         }
 
+        let cache_key = self
+            .auth_user_id
+            .map(|user_id| format!("playlist.detail.{playlist_id}.user.{user_id}"))
+            .unwrap_or_else(|| format!("playlist.detail.{playlist_id}"));
+        if let Some(entry) =
+            self.read_cache::<playlist::PlaylistPage>(&cache_key, PLAYLIST_DETAIL_TTL)
+        {
+            self.playlist_state
+                .data
+                .insert(playlist_id, entry.data.clone());
+            self.playlist_state.fetched_at_ms = Some(entry.fetched_at_ms);
+            return Ok(entry.data);
+        }
+
         let page = self.build_playlist_page_from_remote(playlist_id)?;
-        self.playlist_pages.insert(playlist_id, page.clone());
+        self.playlist_state.data.insert(playlist_id, page.clone());
+        if let Some(fetched_at_ms) = self.write_cache(&cache_key, &page) {
+            self.playlist_state.fetched_at_ms = Some(fetched_at_ms);
+        }
         Ok(page)
     }
 
     pub(super) fn open_playlist_from_library(&mut self, playlist_id: i64, cx: &mut Context<Self>) {
         Self::navigate_to(format!("/playlist/{playlist_id}"), cx);
 
-        self.playlist_loading = true;
-        self.playlist_error = None;
+        self.playlist_state.loading = true;
+        self.playlist_state.error = None;
+        self.playlist_state.source = super::DataSource::Guest;
         cx.notify();
 
         if let Err(err) = self.ensure_playlist_page_loaded(playlist_id) {
-            self.playlist_error = Some(err);
+            self.playlist_state.error = Some(err);
         }
 
-        self.playlist_loading = false;
+        self.playlist_state.loading = false;
         cx.notify();
     }
 
@@ -457,8 +911,9 @@ impl RootView {
     pub(super) fn submit_search_from_query(&mut self, cx: &mut Context<Self>) {
         let query = self.app.read(cx).search_query.trim().to_string();
         if query.is_empty() {
-            self.search_results.clear();
-            self.search_error = None;
+            self.search_state.data.clear();
+            self.search_state.error = None;
+            self.search_state.loading = false;
             Self::navigate_to("/search", cx);
             return;
         }
@@ -707,21 +1162,22 @@ impl RootView {
 
     pub(super) fn perform_search(&mut self, query: String, cx: &mut Context<Self>) {
         let query = query.trim().to_string();
-        self.search_loading = true;
-        self.search_error = None;
+        self.search_state.loading = true;
+        self.search_state.error = None;
+        self.search_state.source = super::DataSource::Guest;
         cx.notify();
 
         let Some(cookie) = self.ensure_auth_cookie(AuthLevel::Guest) else {
-            self.search_results.clear();
-            self.search_loading = false;
-            self.search_error = Some("缺少鉴权凭据".to_string());
+            self.search_state.data.clear();
+            self.search_state.loading = false;
+            self.search_state.error = Some("缺少鉴权凭据".to_string());
             cx.notify();
             return;
         };
         let result = search_actions::search_song_blocking(&query, Some(cookie.as_str()));
         match result {
             Ok(items) => {
-                self.search_results = items
+                self.search_state.data = items
                     .into_iter()
                     .map(|item| search::SearchSong {
                         id: item.id,
@@ -729,13 +1185,13 @@ impl RootView {
                         artists: item.artists,
                     })
                     .collect();
-                self.search_loading = false;
-                self.search_error = None;
+                self.search_state.loading = false;
+                self.search_state.error = None;
             }
             Err(err) => {
-                self.search_results.clear();
-                self.search_loading = false;
-                self.search_error = Some(err.to_string());
+                self.search_state.data.clear();
+                self.search_state.loading = false;
+                self.search_state.error = Some(err.to_string());
             }
         }
         cx.notify();
@@ -845,7 +1301,7 @@ impl RootView {
                         id: track.id,
                         name: track.name.clone(),
                         artist: track.artists.clone(),
-                        cover_url: None,
+                        cover_url: track.cover_url.clone(),
                         source_url: None,
                     })
                     .collect(),
@@ -856,6 +1312,65 @@ impl RootView {
         });
 
         if !self.start_playback_at(0, 0, true, cx) {
+            self.persist_player_runtime(cx);
+            self.persist_player_progress(cx);
+            cx.notify();
+        }
+    }
+
+    pub(super) fn replace_queue_from_daily_tracks(
+        &mut self,
+        track_id: Option<i64>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.has_user_token() {
+            Self::push_error(&mut self.search_error, "每日推荐需要账号登录".to_string());
+            return;
+        }
+
+        if self.daily_tracks.data.is_empty() {
+            self.refresh_daily_tracks();
+        }
+        if self.daily_tracks.data.is_empty() {
+            Self::push_error(
+                &mut self.search_error,
+                "每日推荐为空，无法替换队列".to_string(),
+            );
+            return;
+        }
+
+        let mut start_index = 0usize;
+        if let Some(track_id) = track_id
+            && let Some(index) = self
+                .daily_tracks
+                .data
+                .iter()
+                .position(|track| track.id == track_id)
+        {
+            start_index = index;
+        }
+
+        let queue = self
+            .daily_tracks
+            .data
+            .iter()
+            .map(|track| QueueItem {
+                id: track.id,
+                name: track.name.clone(),
+                artist: track.artists.clone(),
+                cover_url: track.cover_url.clone(),
+                source_url: None,
+            })
+            .collect::<Vec<_>>();
+
+        self.player.update(cx, |player, _| {
+            player.set_queue(queue);
+            player.current_index = Some(start_index);
+            player.position_ms = 0;
+            player.duration_ms = 0;
+        });
+
+        if !self.start_playback_at(start_index, 0, true, cx) {
             self.persist_player_runtime(cx);
             self.persist_player_progress(cx);
             cx.notify();

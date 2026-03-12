@@ -1,1 +1,1 @@
-// Reserved for future album APIs.
+pub mod new;

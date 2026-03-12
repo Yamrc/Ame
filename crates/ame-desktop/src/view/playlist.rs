@@ -1,17 +1,19 @@
 use nekowg::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
+use serde::{Deserialize, Serialize};
 
 use crate::component::button;
 use crate::component::theme;
 use crate::view::common;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaylistTrackRow {
     pub id: i64,
     pub name: String,
     pub artists: String,
+    pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaylistPage {
     pub id: i64,
     pub name: String,

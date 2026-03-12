@@ -1,4 +1,5 @@
 pub mod common;
+pub mod daily_tracks;
 pub mod discover;
 pub mod home;
 pub mod library;

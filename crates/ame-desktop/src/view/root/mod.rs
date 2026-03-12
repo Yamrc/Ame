@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 
 use ame_audio::{AudioConfig, AudioRuntimeHandle, AudioService};
 use ame_core::credential::{AuthBundle, CredentialStore};
-use ame_core::storage::{AppStorage, SettingsStore, StateStore};
+use ame_core::storage::{AppStorage, CacheIndexStore, SettingsStore, StateStore};
 
+use crate::action::library_actions;
 use crate::component::{
     bottom_bar, input,
     nav_bar::{self, NavBarActions, NavBarModel},
@@ -28,7 +29,7 @@ use crate::entity::app::{AppEntity, CloseBehavior};
 use crate::entity::audio_bridge::AudioBridgeEntity;
 use crate::entity::player::{PlaybackMode, PlayerEntity, QueueItem};
 use crate::kernel::{AppCommand, KernelRuntime};
-use crate::view::{library, login, playlist, search};
+use crate::view::{login, playlist, search};
 use std::sync::Arc;
 
 const KEY_PLAYER_VOLUME: &str = "player.volume";
@@ -43,6 +44,33 @@ const QR_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const QR_POLL_TIMEOUT: Duration = Duration::from_secs(120);
 const PROGRESS_PERSIST_INTERVAL: Duration = Duration::from_secs(2);
 const PLAYING_UI_NOTIFY_INTERVAL: Duration = Duration::from_millis(100);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DataSource {
+    Guest,
+    User,
+}
+
+#[derive(Debug, Clone)]
+struct DataState<T> {
+    data: T,
+    loading: bool,
+    error: Option<String>,
+    fetched_at_ms: Option<u64>,
+    source: DataSource,
+}
+
+impl<T: Default> Default for DataState<T> {
+    fn default() -> Self {
+        Self {
+            data: T::default(),
+            loading: false,
+            error: None,
+            fetched_at_ms: None,
+            source: DataSource::Guest,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct PersistedQueueItem {
@@ -61,29 +89,26 @@ pub struct RootView {
     player_progress_slider: Entity<slider::SliderState>,
     player_volume_slider: Entity<slider::SliderState>,
     _subscriptions: Vec<Subscription>,
-    search_results: Vec<search::SearchSong>,
-    search_loading: bool,
     search_error: Option<String>,
+    search_state: DataState<Vec<search::SearchSong>>,
     main_scroll: SmoothScrollState,
     main_scroll_config: SmoothScrollConfig,
     settings_store: Option<SettingsStore>,
     state_store: Option<StateStore>,
+    cache_store: Option<CacheIndexStore>,
     credential_store: CredentialStore,
     auth_bundle: AuthBundle,
     auth_account_summary: Option<String>,
     auth_user_id: Option<i64>,
-    home_playlists: Vec<library::LibraryPlaylistCard>,
-    home_loading: bool,
-    home_error: Option<String>,
-    discover_playlists: Vec<library::LibraryPlaylistCard>,
-    discover_loading: bool,
-    discover_error: Option<String>,
-    library_playlists: Vec<library::LibraryPlaylistCard>,
-    library_loading: bool,
-    library_error: Option<String>,
-    playlist_pages: HashMap<i64, playlist::PlaylistPage>,
-    playlist_loading: bool,
-    playlist_error: Option<String>,
+    home_recommend_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    home_recommend_artists: DataState<Vec<library_actions::ArtistItem>>,
+    home_new_albums: DataState<Vec<library_actions::AlbumItem>>,
+    home_toplists: DataState<Vec<library_actions::ToplistItem>>,
+    daily_tracks: DataState<Vec<library_actions::DailyTrackItem>>,
+    personal_fm: DataState<Option<library_actions::FmTrackItem>>,
+    discover_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    library_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    playlist_state: DataState<HashMap<i64, playlist::PlaylistPage>>,
     login_qr_key: Option<String>,
     login_qr_url: Option<String>,
     login_qr_image: Option<Arc<Image>>,
@@ -106,6 +131,7 @@ impl RootView {
 
         let mut settings_store = None;
         let mut state_store = None;
+        let mut cache_store = None;
         let mut persisted_was_playing = false;
         let mut close_behavior = CloseBehavior::default();
 
@@ -126,6 +152,13 @@ impl RootView {
                             Err(err) => Self::push_error(
                                 &mut startup_error,
                                 format!("打开 state 存储失败: {err}"),
+                            ),
+                        }
+                        match storage.cache() {
+                            Ok(cache) => cache_store = Some(cache),
+                            Err(err) => Self::push_error(
+                                &mut startup_error,
+                                format!("打开 cache 存储失败: {err}"),
                             ),
                         }
                     }
@@ -308,29 +341,29 @@ impl RootView {
             player_progress_slider,
             player_volume_slider,
             _subscriptions: subscriptions,
-            search_results: Vec::new(),
-            search_loading: false,
             search_error: None,
+            search_state: DataState::default(),
             main_scroll: SmoothScrollState::new(nekowg::ScrollHandle::default()),
             main_scroll_config,
             settings_store,
             state_store,
+            cache_store,
             credential_store,
             auth_bundle,
             auth_account_summary: None,
             auth_user_id: None,
-            home_playlists: Vec::new(),
-            home_loading: false,
-            home_error: None,
-            discover_playlists: Vec::new(),
-            discover_loading: false,
-            discover_error: None,
-            library_playlists: Vec::new(),
-            library_loading: false,
-            library_error: None,
-            playlist_pages: HashMap::new(),
-            playlist_loading: false,
-            playlist_error: None,
+            home_recommend_playlists: DataState::default(),
+            home_recommend_artists: DataState::default(),
+            home_new_albums: DataState::default(),
+            home_toplists: DataState::default(),
+            daily_tracks: DataState::default(),
+            personal_fm: DataState::default(),
+            discover_playlists: DataState::default(),
+            library_playlists: DataState::default(),
+            playlist_state: DataState {
+                data: HashMap::new(),
+                ..DataState::default()
+            },
             login_qr_key: None,
             login_qr_url: None,
             login_qr_image: None,
@@ -366,7 +399,7 @@ impl RootView {
         } else {
             root.refresh_login_summary();
         }
-        root.refresh_home_playlists();
+        root.refresh_home_data();
         root.refresh_discover_playlists();
         if persisted_was_playing {
             root.login_qr_status = root
@@ -487,27 +520,22 @@ impl Render for RootView {
             root_entity,
             player_entity,
             routes::RoutesModel {
-                home_playlists: self.home_playlists.clone(),
+                home_recommend_playlists: self.home_recommend_playlists.clone(),
+                home_recommend_artists: self.home_recommend_artists.clone(),
+                home_new_albums: self.home_new_albums.clone(),
+                home_toplists: self.home_toplists.clone(),
+                daily_tracks: self.daily_tracks.clone(),
+                personal_fm: self.personal_fm.clone(),
                 is_user_logged_in: self
                     .auth_bundle
                     .music_u
                     .as_deref()
                     .is_some_and(|value| !value.trim().is_empty()),
-                home_loading: self.home_loading,
-                home_error: self.home_error.clone(),
                 discover_playlists: self.discover_playlists.clone(),
-                discover_loading: self.discover_loading,
-                discover_error: self.discover_error.clone(),
-                search_results: self.search_results.clone(),
-                search_loading: self.search_loading,
-                search_error: self.search_error.clone(),
+                search_state: self.search_state.clone(),
                 library_playlists: self.library_playlists.clone(),
-                library_loading: self.library_loading,
-                library_error: self.library_error.clone(),
-                playlist_pages: self.playlist_pages.clone(),
+                playlist_state: self.playlist_state.clone(),
                 page_scroll_handle: self.main_scroll.handle.clone(),
-                playlist_loading: self.playlist_loading,
-                playlist_error: self.playlist_error.clone(),
                 auth_account_summary: self.auth_account_summary.clone(),
                 login_model,
                 close_behavior_label: self.close_behavior.label().to_string(),

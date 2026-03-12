@@ -165,7 +165,7 @@ impl TransitionRegistry {
                             &active.transition,
                             active.persistent,
                         ) {
-                            if active.event.ne(&Event::NONE) {
+                            if active.event.ne(&Event::None) {
                                 state.priority = AnimationPriority::Lowest;
                                 removed.insert(
                                     id.clone(),
@@ -220,7 +220,7 @@ impl TransitionRegistry {
 
                             Self::background_animated_task(
                                 state.key().clone(),
-                                Event::NONE,
+                                Event::None,
                                 dt,
                                 dt,
                                 transition,
@@ -251,7 +251,7 @@ impl TransitionRegistry {
             .entry(id)
             .or_insert_with(|| State::new(default.clone()));
 
-        f(&mut *state)
+        f(&mut state)
     }
 
     #[inline]

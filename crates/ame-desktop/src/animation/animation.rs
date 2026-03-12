@@ -7,11 +7,15 @@ use super::{
     transition::{IntoArcTransition, Transition, TransitionRegistry, general::Linear},
 };
 
+type HoverListener = Rc<dyn Fn(&bool, &mut Window, &mut App)>;
+type ClickListener = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type StyleModifier<T> = Rc<dyn Fn(&T, State<StyleRefinement>) -> State<StyleRefinement>>;
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Event {
-    NONE,
-    HOVER,
-    CLICK,
+    None,
+    Hover,
+    Click,
 }
 
 #[allow(dead_code)]
@@ -34,11 +38,10 @@ where
     id: ElementId,
     child: E,
     transitions: HashMap<Event, (Duration, Arc<dyn Transition>)>,
-    on_hover: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
-    hover_modifier: Option<Rc<dyn Fn(&bool, State<StyleRefinement>) -> State<StyleRefinement>>>,
-    on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
-    click_modifier:
-        Option<Rc<dyn Fn(&ClickEvent, State<StyleRefinement>) -> State<StyleRefinement>>>,
+    on_hover: Option<HoverListener>,
+    hover_modifier: Option<StyleModifier<bool>>,
+    on_click: Option<ClickListener>,
+    click_modifier: Option<StyleModifier<ClickEvent>>,
 }
 
 #[allow(dead_code)]
@@ -56,7 +59,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         I: IntoArcTransition<T>,
     {
         self.transitions
-            .insert(Event::HOVER, (duration, transition.into_arc()));
+            .insert(Event::Hover, (duration, transition.into_arc()));
         self.hover_modifier = Some(Rc::new(modifier));
 
         self
@@ -73,7 +76,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         I: IntoArcTransition<T>,
     {
         self.transitions
-            .insert(Event::CLICK, (duration, transition.into_arc()));
+            .insert(Event::Click, (duration, transition.into_arc()));
         self.click_modifier = Some(Rc::new(modifier));
 
         self
@@ -356,7 +359,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         let hover_mod = self.hover_modifier;
         let hover_transition = self
             .transitions
-            .get(&Event::HOVER)
+            .get(&Event::Hover)
             .cloned()
             .unwrap_or_else(|| (Duration::default(), Arc::new(Linear)));
 
@@ -365,7 +368,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         let click_mod = self.click_modifier;
         let click_transition = self
             .transitions
-            .get(&Event::CLICK)
+            .get(&Event::Click)
             .cloned()
             .unwrap_or_else(|| (Duration::default(), Arc::new(Linear)));
 
@@ -378,17 +381,17 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
                 Self::animated_handle_persistent(
                     hovered,
                     id_for_hover.clone(),
-                    Event::HOVER,
+                    Event::Hover,
                     hover_mod.clone(),
                     hover_transition.clone(),
                     AnimationPriority::Medium,
                 );
             } else {
-                TransitionRegistry::remove_persistent_context(&id_for_hover, Event::HOVER);
+                TransitionRegistry::remove_persistent_context(&id_for_hover, Event::Hover);
                 Self::animated_handle(
                     hovered,
                     id_for_hover.clone(),
-                    Event::HOVER,
+                    Event::Hover,
                     hover_mod.clone(),
                     hover_transition.clone(),
                     AnimationPriority::High,
@@ -404,7 +407,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
             Self::animated_handle(
                 event,
                 id_for_click.clone(),
-                Event::CLICK,
+                Event::Click,
                 click_mod.clone(),
                 click_transition.clone(),
                 AnimationPriority::High,
@@ -422,7 +425,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         data: &T,
         id: ElementId,
         event: Event,
-        modifier: Option<Rc<dyn Fn(&T, State<StyleRefinement>) -> State<StyleRefinement>>>,
+        modifier: Option<StyleModifier<T>>,
         transition: (Duration, Arc<dyn Transition>),
         priority: AnimationPriority,
         save_persistent: bool,
@@ -479,7 +482,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         data: &T,
         id: ElementId,
         event: Event,
-        modifier: Option<Rc<dyn Fn(&T, State<StyleRefinement>) -> State<StyleRefinement>>>,
+        modifier: Option<StyleModifier<T>>,
         transition: (Duration, Arc<dyn Transition>),
         priority: AnimationPriority,
     ) {
@@ -551,7 +554,7 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
         if let Some((ver, dt)) = should_start_task {
             TransitionRegistry::background_animated_task(
                 id,
-                Event::NONE,
+                Event::None,
                 dt,
                 transition.0,
                 transition.1,

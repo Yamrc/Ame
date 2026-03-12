@@ -176,7 +176,7 @@ impl ShadowBackground {
                 },
             ]
         } else {
-            self.colors.clone()
+            self.colors
         }
     }
 }
@@ -209,7 +209,7 @@ impl Interpolatable for ShadowBackground {
 
         Self {
             tag: ShadowBackgroundTag::LinearGradient,
-            pad0: other.pad0.clone(),
+            pad0: other.pad0,
             solid: self.solid.interpolate(&other.solid, t),
             gradient_angle_or_pattern_height: refine_interp!(
                 self,
@@ -290,7 +290,7 @@ impl Interpolatable for Length {
     #[inline]
     fn interpolate(&self, other: &Self, t: f32) -> Self {
         match (self, other) {
-            (Self::Definite(from), Self::Definite(to)) => Self::Definite(from.interpolate(&to, t)),
+            (Self::Definite(from), Self::Definite(to)) => Self::Definite(from.interpolate(to, t)),
             _ => *other,
         }
     }
@@ -432,10 +432,8 @@ impl FastInterpolatable for StyleRefinement {
         fast_optional_refine_interp!(self, other, box_shadow, t, out);
         fast_optional_refine_interp!(self, other, opacity, t, out);
 
-        if self.text.is_some() || other.text.is_some() {
-            if self.text.ne(&other.text) {
-                self.text.fast_interpolate(&other.text, t, &mut out.text);
-            }
+        if (self.text.is_some() || other.text.is_some()) && self.text.ne(&other.text) {
+            self.text.fast_interpolate(&other.text, t, &mut out.text);
         }
     }
 }
@@ -456,10 +454,6 @@ pub struct State<T: FastInterpolatable + Default + PartialEq> {
 impl<T: FastInterpolatable + Default + PartialEq> PartialEq for State<T> {
     fn eq(&self, other: &Self) -> bool {
         self.to.eq(&other.to)
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.to.ne(&other.to)
     }
 }
 
