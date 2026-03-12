@@ -2,8 +2,8 @@ mod actions;
 
 pub use actions::{TrayNext, TrayQuit, TrayShowWindow, TrayTogglePlay};
 
-use nekowg::{App, Global, Image, ImageFormat, MenuItem, WeakEntity, WindowHandle};
-use nekowg_tray::{DoubleClickEvent, Tray, TrayAppContext};
+use nekowg::{App, Global, Image, ImageFormat, MenuItem, MouseButton, WeakEntity, WindowHandle};
+use nekowg_tray::{ClickEvent, DoubleClickEvent, Tray, TrayAppContext};
 use tracing::error;
 
 use crate::action::ui_actions::{
@@ -28,6 +28,7 @@ pub fn init(cx: &mut App) {
     cx.on_action(on_toggle_play);
     cx.on_action(on_next);
     cx.on_action(on_quit);
+    cx.on_action(on_tray_click);
     cx.on_action(on_tray_double_click);
     cx.on_action(on_hotkey_toggle_play);
     cx.on_action(on_hotkey_next_track);
@@ -142,6 +143,12 @@ fn on_quit(_: &TrayQuit, cx: &mut App) {
         }
     });
     cx.quit();
+}
+
+fn on_tray_click(event: &ClickEvent, cx: &mut App) {
+    if event.button == MouseButton::Left {
+        on_show_window(&TrayShowWindow, cx);
+    }
 }
 
 fn on_tray_double_click(_: &DoubleClickEvent, cx: &mut App) {

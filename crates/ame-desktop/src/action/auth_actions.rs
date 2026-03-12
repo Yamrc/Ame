@@ -100,7 +100,10 @@ pub fn refresh_login_token_blocking(cookie: Option<&str>) -> Result<ResponseWith
 }
 
 pub fn login_summary_text(value: &Value) -> Option<String> {
-    let profile = &value["data"]["profile"];
+    let profile = value
+        .get("data")
+        .and_then(|data| data.get("profile"))
+        .or_else(|| value.get("profile"))?;
     let nickname = profile["nickname"].as_str().unwrap_or_default();
     let user_id = profile["userId"].as_i64().unwrap_or_default();
     if !nickname.is_empty() && user_id > 0 {

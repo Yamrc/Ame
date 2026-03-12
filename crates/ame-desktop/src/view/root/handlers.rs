@@ -4,6 +4,7 @@ use nekowg::{Context, SharedString};
 use ame_audio::{AudioCommand, AudioError, SeekTarget, SourceSpec};
 use nekowg::{Image, ImageFormat};
 use qrcode::{QrCode, render::svg};
+use rand::RngExt;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -304,12 +305,15 @@ impl RootView {
     pub(super) fn refresh_login_summary(&mut self) {
         if self.auth_bundle.music_u.is_none() {
             self.auth_account_summary = None;
+            self.auth_user_name = None;
+            self.auth_user_avatar = None;
             self.auth_user_id = None;
             self.library_playlists.data.clear();
             self.library_playlists.error = None;
             self.library_playlists.loading = false;
             self.playlist_state.data.clear();
             self.playlist_state.error = None;
+            self.library_liked_lyric_lines.clear();
             self.daily_tracks.data.clear();
             self.daily_tracks.error = None;
             self.daily_tracks.loading = false;
@@ -321,21 +325,39 @@ impl RootView {
         }
         let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
             self.auth_account_summary = None;
+            self.auth_user_name = None;
+            self.auth_user_avatar = None;
             self.auth_user_id = None;
             return;
         };
         match auth_actions::fetch_login_status_blocking(Some(cookie.as_str())) {
             Ok(body) => {
+                let data = body.get("data").unwrap_or(&body);
+                let profile = data
+                    .get("profile")
+                    .or_else(|| body.get("profile"))
+                    .unwrap_or(&serde_json::Value::Null);
                 self.auth_account_summary = auth_actions::login_summary_text(&body);
-                self.auth_user_id = body["data"]["account"]["id"]
+                self.auth_user_name = profile["nickname"].as_str().map(str::to_string);
+                self.auth_user_avatar = profile["avatarUrl"].as_str().map(str::to_string);
+                self.auth_user_id = data["account"]["id"]
                     .as_i64()
-                    .or_else(|| body["data"]["profile"]["userId"].as_i64());
-                self.refresh_library_playlists();
+                    .or_else(|| body["account"]["id"].as_i64())
+                    .or_else(|| profile["userId"].as_i64());
+                if self.auth_user_id.is_some() {
+                    self.refresh_library_playlists();
+                } else {
+                    self.library_playlists.data.clear();
+                    self.library_playlists.error = Some("读取用户信息失败".to_string());
+                    self.library_playlists.loading = false;
+                }
                 self.refresh_home_data();
                 self.refresh_discover_playlists();
             }
             Err(err) => {
                 self.auth_account_summary = None;
+                self.auth_user_name = None;
+                self.auth_user_avatar = None;
                 self.auth_user_id = None;
                 Self::push_error(&mut self.search_error, format!("读取登录状态失败: {err}"));
             }
@@ -374,7 +396,63 @@ impl RootView {
                 self.library_playlists.error = Some(err.to_string());
             }
         }
+        if let Some(liked_id) = self
+            .library_playlists
+            .data
+            .iter()
+            .find(|item| item.special_type == 5)
+            .map(|item| item.id)
+        {
+            self.refresh_library_liked_tracks(liked_id);
+        } else {
+            self.library_liked_tracks.data.clear();
+            self.library_liked_tracks.error = None;
+            self.library_liked_tracks.loading = false;
+            self.library_liked_tracks.fetched_at_ms = None;
+            self.library_liked_lyric_lines.clear();
+        }
         self.library_playlists.loading = false;
+    }
+
+    fn refresh_library_liked_tracks(&mut self, playlist_id: i64) {
+        self.library_liked_tracks.loading = true;
+        self.library_liked_tracks.error = None;
+        self.library_liked_tracks.source = super::DataSource::User;
+        let Some(cookie) = self.ensure_auth_cookie(AuthLevel::User) else {
+            self.library_liked_tracks.loading = false;
+            self.library_liked_tracks.error = Some("缺少鉴权凭据".to_string());
+            return;
+        };
+        match library_actions::fetch_playlist_detail_blocking(playlist_id, cookie.as_str()) {
+            Ok(detail) => {
+                let tracks = detail.tracks;
+                self.library_liked_tracks.data = tracks.clone().into_iter().take(12).collect();
+                self.library_liked_tracks.fetched_at_ms = Some(Self::now_millis());
+                self.library_liked_lyric_lines.clear();
+                if !tracks.is_empty() {
+                    let mut rng = rand::rng();
+                    let index = rng.random_range(0..tracks.len());
+                    let track_id = tracks[index].id;
+                    match library_actions::fetch_track_lyric_preview_blocking(
+                        track_id,
+                        cookie.as_str(),
+                    ) {
+                        Ok(lines) => {
+                            self.library_liked_lyric_lines = lines;
+                        }
+                        Err(_) => {
+                            self.library_liked_lyric_lines.clear();
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                self.library_liked_tracks.data.clear();
+                self.library_liked_tracks.error = Some(err.to_string());
+                self.library_liked_lyric_lines.clear();
+            }
+        }
+        self.library_liked_tracks.loading = false;
     }
 
     pub(super) fn refresh_home_data(&mut self) {
@@ -1602,3 +1680,7 @@ fn song_input_to_search_song(song: SongInput) -> search::SearchSong {
         artists: song.artists,
     }
 }
+
+
+
+

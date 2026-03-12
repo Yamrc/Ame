@@ -9,8 +9,10 @@ use ame_netease::api::playlist::recommend_songs::RecommendSongsRequest;
 use ame_netease::api::playlist::toplist::ToplistRequest;
 use ame_netease::api::radio::personal_fm::PersonalFmRequest;
 use ame_netease::api::track::detail::TrackDetailRequest;
+use ame_netease::api::track::lyric::TrackLyricRequest;
 use ame_netease::api::user::playlist::UserPlaylistRequest;
 use anyhow::{Context as _, Result};
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -24,6 +26,12 @@ pub struct LibraryPlaylistItem {
     pub track_count: u32,
     pub creator_name: String,
     pub cover_url: Option<String>,
+    #[serde(default)]
+    pub creator_id: Option<i64>,
+    #[serde(default)]
+    pub subscribed: bool,
+    #[serde(default)]
+    pub special_type: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,6 +156,11 @@ fn parse_playlist_item(value: &Value, cover_size: u32) -> Option<LibraryPlaylist
         .or_else(|| value["creator"]["name"].as_str())
         .unwrap_or("网易云音乐")
         .to_string();
+    let creator_id = value["creator"]["userId"]
+        .as_i64()
+        .or_else(|| value["creatorId"].as_i64());
+    let subscribed = value["subscribed"].as_bool().unwrap_or(false);
+    let special_type = value["specialType"].as_i64().unwrap_or(0);
     let cover_url = compact_cover_url(
         value["coverImgUrl"]
             .as_str()
@@ -160,6 +173,9 @@ fn parse_playlist_item(value: &Value, cover_size: u32) -> Option<LibraryPlaylist
         track_count,
         creator_name,
         cover_url,
+        creator_id,
+        subscribed,
+        special_type,
     })
 }
 
@@ -536,3 +552,42 @@ pub fn fetch_playlist_detail_blocking(
         tracks,
     })
 }
+
+pub fn fetch_track_lyric_preview_blocking(track_id: i64, cookie: &str) -> Result<Vec<String>> {
+    let client = NeteaseClient::with_cookie(cookie);
+    let response: Value = block_on(client.weapi_request(TrackLyricRequest::new(track_id)))?;
+    let raw = response["lrc"]["lyric"].as_str().unwrap_or_default();
+    let mut lines = parse_lyric_lines(raw);
+    if lines.is_empty() {
+        return Ok(Vec::new());
+    }
+    let pick = 2.min(lines.len());
+    let mut rng = rand::rng();
+    let start = if lines.len() <= pick {
+        0
+    } else {
+        rng.random_range(0..=lines.len() - pick)
+    };
+    lines = lines.into_iter().skip(start).take(pick).collect();
+    Ok(lines)
+}
+
+fn parse_lyric_lines(raw: &str) -> Vec<String> {
+    raw.lines()
+        .filter_map(|line| line.split(']').next_back())
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .filter(|line| {
+            !line.contains("作词")
+                && !line.contains("作曲")
+                && !line.contains("纯音乐")
+                && !line.contains("编曲")
+        })
+        .map(|line| line.to_string())
+        .collect()
+}
+
+
+
+
+

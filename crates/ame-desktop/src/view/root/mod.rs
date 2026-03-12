@@ -29,7 +29,8 @@ use crate::entity::app::{AppEntity, CloseBehavior};
 use crate::entity::audio_bridge::AudioBridgeEntity;
 use crate::entity::player::{PlaybackMode, PlayerEntity, QueueItem};
 use crate::kernel::{AppCommand, KernelRuntime};
-use crate::view::{login, playlist, search};
+use crate::view::{library, login, playlist, search};
+use crate::util::url::image_resize_url;
 use std::sync::Arc;
 
 const KEY_PLAYER_VOLUME: &str = "player.volume";
@@ -99,6 +100,8 @@ pub struct RootView {
     credential_store: CredentialStore,
     auth_bundle: AuthBundle,
     auth_account_summary: Option<String>,
+    auth_user_name: Option<String>,
+    auth_user_avatar: Option<String>,
     auth_user_id: Option<i64>,
     home_recommend_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
     home_recommend_artists: DataState<Vec<library_actions::ArtistItem>>,
@@ -108,6 +111,9 @@ pub struct RootView {
     personal_fm: DataState<Option<library_actions::FmTrackItem>>,
     discover_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
     library_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    library_liked_tracks: DataState<Vec<library_actions::PlaylistTrackItem>>,
+    library_liked_lyric_lines: Vec<String>,
+    library_tab: library::LibraryTab,
     playlist_state: DataState<HashMap<i64, playlist::PlaylistPage>>,
     login_qr_key: Option<String>,
     login_qr_url: Option<String>,
@@ -351,6 +357,8 @@ impl RootView {
             credential_store,
             auth_bundle,
             auth_account_summary: None,
+            auth_user_name: None,
+            auth_user_avatar: None,
             auth_user_id: None,
             home_recommend_playlists: DataState::default(),
             home_recommend_artists: DataState::default(),
@@ -360,6 +368,9 @@ impl RootView {
             personal_fm: DataState::default(),
             discover_playlists: DataState::default(),
             library_playlists: DataState::default(),
+            library_liked_tracks: DataState::default(),
+            library_liked_lyric_lines: Vec::new(),
+            library_tab: library::LibraryTab::Created,
             playlist_state: DataState {
                 data: HashMap::new(),
                 ..DataState::default()
@@ -472,11 +483,18 @@ impl Render for RootView {
             },
         );
 
+        let nav_avatar = self
+            .auth_user_avatar
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| image_resize_url(value, "64y64"))
+            .unwrap_or_else(|| "image/akkarin.webp".to_string());
+
         let nav = nav_bar::render(
             &NavBarModel {
                 pathname: pathname.clone().into(),
                 search_input: self.nav_search_input.clone(),
-                avatar_asset: "image/akkarin.webp".into(),
+                avatar_asset: nav_avatar.into(),
             },
             &NavBarActions {
                 on_back: Arc::new(|_| {}),
@@ -534,9 +552,14 @@ impl Render for RootView {
                 discover_playlists: self.discover_playlists.clone(),
                 search_state: self.search_state.clone(),
                 library_playlists: self.library_playlists.clone(),
+                library_liked_tracks: self.library_liked_tracks.clone(),
+                library_liked_lyric_lines: self.library_liked_lyric_lines.clone(),
+                library_tab: self.library_tab,
                 playlist_state: self.playlist_state.clone(),
                 page_scroll_handle: self.main_scroll.handle.clone(),
                 auth_account_summary: self.auth_account_summary.clone(),
+                auth_user_name: self.auth_user_name.clone(),
+                auth_user_avatar: self.auth_user_avatar.clone(),
                 login_model,
                 close_behavior_label: self.close_behavior.label().to_string(),
             },
@@ -736,3 +759,7 @@ impl RootView {
         }
     }
 }
+
+
+
+

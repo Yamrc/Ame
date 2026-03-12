@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "ame"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ame-audio",
  "ame-core",
@@ -100,6 +100,7 @@ dependencies = [
  "nekowg_platform",
  "parking_lot",
  "qrcode",
+ "rand 0.10.0",
  "reqwest",
  "rust-embed",
  "serde",
@@ -111,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "ame-audio"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "ame-core",
  "audioadapter-buffers",
@@ -126,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "ame-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "keyring",
@@ -141,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "ame-netease"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "aes",
  "base64",

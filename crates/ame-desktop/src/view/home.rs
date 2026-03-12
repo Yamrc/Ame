@@ -193,12 +193,14 @@ fn featured_fm_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static
                     .id(format!("home-fm-featured-{}", &url))
                     .w(px(169.))
                     .h(px(169.))
+                    .flex_shrink_0()
                     .rounded_lg()
                     .overflow_hidden()
                     .into_any_element(),
                 None => div()
-                    .w(px(162.))
-                    .h(px(162.))
+                    .w(px(169.))
+                    .h(px(169.))
+                    .flex_shrink_0()
                     .rounded_lg()
                     .bg(rgb(0x6F6F6F))
                     .into_any_element(),

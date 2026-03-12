@@ -28,5 +28,6 @@ dirs.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 qrcode.workspace = true
+rand.workspace = true
 tokio.workspace = true
 tracing.workspace = true

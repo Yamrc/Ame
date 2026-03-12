@@ -47,8 +47,8 @@ impl SmoothScrollConfig {
                 fade_delay_ms: 1800,
                 fade_duration_ms: 300,
                 thumb_min_px: 48.0,
-                track_width_px: 10.0,
-                overlay_width_px: 12.0,
+                track_width_px: 8.0,
+                overlay_width_px: 10.0,
             },
             SmoothScrollProfile::Balanced => Self {
                 wheel_line_multiplier: 1.0,
@@ -58,8 +58,8 @@ impl SmoothScrollConfig {
                 fade_delay_ms: 1800,
                 fade_duration_ms: 300,
                 thumb_min_px: 48.0,
-                track_width_px: 10.0,
-                overlay_width_px: 12.0,
+                track_width_px: 8.0,
+                overlay_width_px: 10.0,
             },
             SmoothScrollProfile::HighDamping => Self {
                 wheel_line_multiplier: 1.0,
@@ -69,8 +69,8 @@ impl SmoothScrollConfig {
                 fade_delay_ms: 1800,
                 fade_duration_ms: 300,
                 thumb_min_px: 48.0,
-                track_width_px: 10.0,
-                overlay_width_px: 12.0,
+                track_width_px: 8.0,
+                overlay_width_px: 10.0,
             },
         }
     }
@@ -91,9 +91,9 @@ pub struct ScrollBarStyle {
 impl Default for ScrollBarStyle {
     fn default() -> Self {
         Self {
-            overlay_width: px(12.),
-            track_radius: px(6.),
-            thumb_radius: px(6.),
+            overlay_width: px(10.),
+            track_radius: px(5.),
+            thumb_radius: px(5.),
             track_alpha: 0x26,
             thumb_idle_alpha: 0xA0,
             thumb_hover_alpha: 0xDC,
@@ -619,3 +619,4 @@ mod tests {
         assert!(state.scrollbar_opacity(&config, start + Duration::from_millis(250)) < 0.05);
     }
 }
+

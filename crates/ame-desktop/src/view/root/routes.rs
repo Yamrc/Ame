@@ -1,6 +1,6 @@
 use crate::router::{Route, Routes, use_params};
 use nekowg::{
-    AnyElement, Context, Entity, ListSizingBehavior, MouseButton, ScrollHandle, prelude::*, px,
+    AnyElement, App, Context, Entity, ListSizingBehavior, MouseButton, ScrollHandle, prelude::*, px,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -24,9 +24,14 @@ pub(super) struct RoutesModel {
     pub discover_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
     pub search_state: DataState<Vec<search::SearchSong>>,
     pub library_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
+    pub library_liked_tracks: DataState<Vec<library_actions::PlaylistTrackItem>>,
+    pub library_liked_lyric_lines: Vec<String>,
+    pub library_tab: library::LibraryTab,
     pub playlist_state: DataState<HashMap<i64, playlist::PlaylistPage>>,
     pub page_scroll_handle: ScrollHandle,
     pub auth_account_summary: Option<String>,
+    pub auth_user_name: Option<String>,
+    pub auth_user_avatar: Option<String>,
     pub login_model: login::LoginViewModel,
     pub close_behavior_label: String,
 }
@@ -299,9 +304,14 @@ impl RootView {
             discover_playlists: discover_playlists_state,
             search_state,
             library_playlists: library_playlists_state,
+            library_liked_tracks: library_liked_tracks_state,
+            library_liked_lyric_lines,
+            library_tab,
             playlist_state: playlist_state_state,
             page_scroll_handle,
             auth_account_summary,
+            auth_user_name,
+            auth_user_avatar,
             login_model,
             close_behavior_label,
         } = model;
@@ -365,17 +375,130 @@ impl RootView {
             .child(Route::new().path("library").element({
                 let root_entity = root_entity.clone();
                 let library_playlists = library_playlists_state.data.clone();
+                let library_liked_tracks = library_liked_tracks_state.data.clone();
                 let library_loading = library_playlists_state.loading;
                 let library_error = library_playlists_state.error.clone();
                 let auth_account_summary = auth_account_summary.clone();
+                let auth_user_name = auth_user_name.clone();
+                let auth_user_avatar = auth_user_avatar.clone();
                 move |_, _| {
-                    let rows = Self::build_library_rows(&library_playlists, &root_entity);
-                    let title = auth_account_summary
+                    let liked_playlist = library_playlists
+                        .iter()
+                        .find(|item| item.special_type == 5)
+                        .cloned();
+                    let created_items = library_playlists
+                        .iter()
+                        .filter(|item| !item.subscribed && item.special_type != 5)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let collected_items = library_playlists
+                        .iter()
+                        .filter(|item| item.subscribed)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let created_rows = Self::build_library_rows(&created_items, &root_entity);
+                    let collected_rows = Self::build_library_rows(&collected_items, &root_entity);
+                    let preview_count = library_liked_tracks.len().min(12);
+                    let preview_rows = preview_count.div_ceil(3).max(2);
+                    let preview_height = preview_rows as f32 * 52.0
+                        + (preview_rows.saturating_sub(1) as f32) * 12.0;
+                    let preview_min_height = px(preview_height);
+                    let title = auth_user_name
                         .as_deref()
-                        .filter(|summary| !summary.trim().is_empty())
-                        .map(|summary| format!("{summary} 的音乐库"))
+                        .filter(|name| !name.trim().is_empty())
+                        .map(|name| format!("{name} 的音乐库"))
+                        .or_else(|| {
+                            auth_account_summary
+                                .as_deref()
+                                .filter(|summary| !summary.trim().is_empty())
+                                .map(|summary| format!("{summary} 的音乐库"))
+                        })
                         .unwrap_or_else(|| "我的音乐库".to_string());
-                    library::render(&title, library_loading, library_error.as_deref(), rows)
+                    let root_for_liked = root_entity.clone();
+                    let liked_lyrics = library_liked_lyric_lines.clone();
+                    let liked_card = liked_playlist.clone().map(|item| {
+                        let playlist_id = item.id;
+                        let root_entity = root_for_liked.clone();
+                        let root_for_open = root_entity.clone();
+                        let root_for_play = root_entity.clone();
+                        library::liked_card(
+                            library::LibraryPlaylistCard {
+                                id: item.id,
+                                name: item.name,
+                                track_count: item.track_count,
+                                creator_name: item.creator_name,
+                                cover_url: item.cover_url,
+                            },
+                            &liked_lyrics,
+                            preview_min_height,
+                            move |cx| {
+                                root_for_open.update(cx, |this, _| {
+                                    this.queue_kernel_command(AppCommand::OpenLibraryPlaylist(
+                                        playlist_id,
+                                    ))
+                                });
+                            },
+                            move |cx| {
+                                root_for_play.update(cx, |this, _| {
+                                    this.queue_kernel_command(
+                                        AppCommand::ReplaceQueueFromPlaylist(playlist_id),
+                                    )
+                                });
+                            },
+                        )
+                    });
+                    let preview_play = {
+                        let root_entity = root_entity.clone();
+                        Arc::new(move |track: library_actions::PlaylistTrackItem, cx: &mut App| {
+                            root_entity.update(cx, |this, _| {
+                                this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(
+                                    SongInput {
+                                        id: track.id,
+                                        name: track.name,
+                                        artists: track.artists,
+                                    },
+                                ))
+                            });
+                        })
+                    };
+                    library::render(
+                        &title,
+                        auth_user_avatar.clone(),
+                        library_loading,
+                        library_error.as_deref(),
+                        liked_card,
+                        &library_liked_tracks,
+                        preview_min_height,
+                        library_tab,
+                        {
+                            let root_entity = root_entity.clone();
+                            move |cx| {
+                                root_entity.update(cx, |this, _| {
+                                    this.library_tab = library::LibraryTab::Created;
+                                });
+                            }
+                        },
+                        {
+                            let root_entity = root_entity.clone();
+                            move |cx| {
+                                root_entity.update(cx, |this, _| {
+                                    this.library_tab = library::LibraryTab::Collected;
+                                });
+                            }
+                        },
+                        {
+                            let root_entity = root_entity.clone();
+                            move |cx| {
+                                root_entity.update(cx, |this, _| {
+                                    this.library_tab = library::LibraryTab::Followed;
+                                });
+                            }
+                        },
+                        preview_play,
+                        created_rows,
+                        collected_rows,
+                        Vec::new(),
+                    )
                 }
             }))
             .child(Route::new().path("search").element({
@@ -752,3 +875,9 @@ impl RootView {
             .render(cx)
     }
 }
+
+
+
+
+
+
