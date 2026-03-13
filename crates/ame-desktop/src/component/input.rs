@@ -220,6 +220,7 @@ pub struct InputState {
     marked_range: Option<Range<usize>>,
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
+    horizontal_scroll: Pixels,
     is_selecting: bool,
     disabled: bool,
     cursor_visible: bool,
@@ -239,6 +240,7 @@ impl InputState {
             marked_range: None,
             last_layout: None,
             last_bounds: None,
+            horizontal_scroll: px(0.),
             is_selecting: false,
             disabled: false,
             cursor_visible: true,
@@ -560,7 +562,7 @@ impl InputState {
             return self.text.len();
         }
 
-        line.closest_index_for_x(position.x - bounds.left())
+        line.closest_index_for_x(position.x - bounds.left() + self.horizontal_scroll)
     }
 
     fn previous_boundary(&self, offset: usize) -> usize {
@@ -627,6 +629,37 @@ impl InputState {
 
     fn touch_cursor(&mut self) {
         self.cursor_visible = true;
+    }
+
+    fn viewport_width(&self) -> Pixels {
+        self.last_bounds
+            .map(|bounds| bounds.size.width)
+            .unwrap_or(px(0.))
+    }
+
+    fn sync_horizontal_scroll(&mut self) {
+        let Some(line) = self.last_layout.as_ref() else {
+            self.horizontal_scroll = px(0.);
+            return;
+        };
+
+        let viewport_width = self.viewport_width().max(px(0.));
+        if viewport_width <= px(0.) || line.width <= viewport_width {
+            self.horizontal_scroll = px(0.);
+            return;
+        }
+
+        let cursor_x = line.x_for_index(self.cursor_offset().min(self.text.len()));
+        let max_scroll = (line.width - viewport_width).max(px(0.));
+        let mut next_scroll = self.horizontal_scroll.clamp(px(0.), max_scroll);
+
+        if cursor_x < next_scroll {
+            next_scroll = cursor_x;
+        } else if cursor_x > next_scroll + viewport_width {
+            next_scroll = (cursor_x - viewport_width).max(px(0.));
+        }
+
+        self.horizontal_scroll = next_scroll.clamp(px(0.), max_scroll);
     }
 }
 
@@ -745,11 +778,12 @@ impl EntityInputHandler for InputState {
         let range = self.range_from_utf16(&range_utf16);
         Some(Bounds::from_corners(
             point(
-                element_bounds.left() + last_layout.x_for_index(range.start),
+                element_bounds.left() + last_layout.x_for_index(range.start)
+                    - self.horizontal_scroll,
                 element_bounds.top(),
             ),
             point(
-                element_bounds.left() + last_layout.x_for_index(range.end),
+                element_bounds.left() + last_layout.x_for_index(range.end) - self.horizontal_scroll,
                 element_bounds.bottom(),
             ),
         ))
@@ -763,7 +797,7 @@ impl EntityInputHandler for InputState {
     ) -> Option<usize> {
         let local = self.last_bounds?.localize(&point)?;
         let last_layout = self.last_layout.as_ref()?;
-        let utf8_index = last_layout.index_for_x(local.x)?;
+        let utf8_index = last_layout.index_for_x(local.x + self.horizontal_scroll)?;
         Some(self.offset_to_utf16(utf8_index))
     }
 }
@@ -826,19 +860,34 @@ impl Element for InputTextElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let input = self.input.read(cx);
-        let content = input.text.clone();
-        let selected_range = input.selected_range.clone();
-        let cursor_offset = input.cursor_offset();
+        let (
+            content,
+            selected_range,
+            cursor_offset,
+            input_style,
+            placeholder,
+            marked_range,
+            horizontal_scroll,
+        ) = {
+            let input = self.input.read(cx);
+            (
+                input.text.clone(),
+                input.selected_range.clone(),
+                input.cursor_offset(),
+                input.style,
+                input.placeholder.clone(),
+                input.marked_range.clone(),
+                input.horizontal_scroll,
+            )
+        };
         let text_style = window.text_style();
-        let input_style = input.style;
         let text_is_empty = content.is_empty();
         let placeholder_alpha =
             (input_style.placeholder_alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
 
         let (display_text, text_color): (SharedString, _) = if text_is_empty {
             (
-                input.placeholder.clone(),
+                placeholder,
                 rgba(theme::with_alpha(input_style.text_color, placeholder_alpha)).into(),
             )
         } else {
@@ -855,7 +904,7 @@ impl Element for InputTextElement {
         };
 
         let runs = if !text_is_empty {
-            if let Some(marked_range) = input.marked_range.clone() {
+            if let Some(marked_range) = marked_range {
                 let mut runs = Vec::new();
                 if marked_range.start > 0 {
                     runs.push(TextRun {
@@ -891,8 +940,28 @@ impl Element for InputTextElement {
             .text_system()
             .shape_line(display_text, font_size, &runs, None);
 
-        let (selection, cursor) = if selected_range.is_empty() || text_is_empty {
+        let viewport_width = bounds.size.width.max(px(0.));
+        let next_horizontal_scroll = if text_is_empty || line.width <= viewport_width {
+            px(0.)
+        } else {
             let cursor_x = line.x_for_index(cursor_offset.min(content.len()));
+            let max_scroll = (line.width - viewport_width).max(px(0.));
+            let mut next_scroll = horizontal_scroll.clamp(px(0.), max_scroll);
+            if cursor_x < next_scroll {
+                next_scroll = cursor_x;
+            } else if cursor_x > next_scroll + viewport_width {
+                next_scroll = (cursor_x - viewport_width).max(px(0.));
+            }
+            next_scroll.clamp(px(0.), max_scroll)
+        };
+
+        self.input.update(cx, |input, _| {
+            input.horizontal_scroll = next_horizontal_scroll;
+        });
+
+        let (selection, cursor) = if selected_range.is_empty() || text_is_empty {
+            let cursor_x =
+                line.x_for_index(cursor_offset.min(content.len())) - next_horizontal_scroll;
             (
                 None,
                 Some(fill(
@@ -917,11 +986,13 @@ impl Element for InputTextElement {
                 Some(fill(
                     Bounds::from_corners(
                         point(
-                            bounds.left() + line.x_for_index(selected_range.start),
+                            bounds.left() + line.x_for_index(selected_range.start)
+                                - next_horizontal_scroll,
                             bounds.top() + input_style.selection_vertical_inset,
                         ),
                         point(
-                            bounds.left() + line.x_for_index(selected_range.end),
+                            bounds.left() + line.x_for_index(selected_range.end)
+                                - next_horizontal_scroll,
                             bounds.bottom() - input_style.selection_vertical_inset,
                         ),
                     ),
@@ -971,7 +1042,10 @@ impl Element for InputTextElement {
         };
 
         let _ = line.paint(
-            bounds.origin,
+            point(
+                bounds.origin.x - input_state.horizontal_scroll,
+                bounds.origin.y,
+            ),
             window.line_height(),
             TextAlign::Left,
             None,
@@ -990,6 +1064,7 @@ impl Element for InputTextElement {
         self.input.update(cx, |input, _| {
             input.last_layout = Some(line);
             input.last_bounds = Some(bounds);
+            input.sync_horizontal_scroll();
         });
     }
 }
@@ -1030,6 +1105,7 @@ impl Render for InputState {
             .border(style.border_width)
             .border_color(rgb(style.border_color))
             .bg(rgb(style.background_color))
+            .overflow_hidden()
             .text_color(rgb(style.text_color))
             .text_size(style.text_size)
             .line_height(style.line_height)

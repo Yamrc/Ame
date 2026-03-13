@@ -1,5 +1,6 @@
 pub mod bottom_bar;
 pub mod button;
+pub mod context_menu;
 pub mod icon;
 pub mod input;
 pub mod nav_bar;
