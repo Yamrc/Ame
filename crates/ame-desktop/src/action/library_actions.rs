@@ -38,7 +38,10 @@ pub struct LibraryPlaylistItem {
 pub struct PlaylistTrackItem {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
     pub cover_url: Option<String>,
 }
 
@@ -55,7 +58,10 @@ pub struct PlaylistDetailData {
 pub struct FmTrackItem {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
     pub cover_url: Option<String>,
 }
 
@@ -63,7 +69,10 @@ pub struct FmTrackItem {
 pub struct DailyTrackItem {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
     pub cover_url: Option<String>,
 }
 
@@ -123,10 +132,40 @@ fn parse_artist_names(value: &Value) -> String {
     }
 }
 
+fn parse_track_alias(value: &Value) -> Option<String> {
+    for key in ["tns", "transNames", "alia"] {
+        let alias = value[key]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|item| !item.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" / ")
+            })
+            .filter(|alias| !alias.is_empty());
+        if alias.is_some() {
+            return alias;
+        }
+    }
+    None
+}
+
 fn parse_track_item(value: &Value) -> Option<PlaylistTrackItem> {
     let id = value["id"].as_i64()?;
     let name = value["name"].as_str().unwrap_or("未知歌曲").to_string();
+    let alias = parse_track_alias(value);
     let artists = parse_artist_names(value);
+    let album = value["al"]["name"]
+        .as_str()
+        .or_else(|| value["album"]["name"].as_str())
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty());
+    let duration_ms = value["dt"]
+        .as_u64()
+        .or_else(|| value["duration"].as_u64());
     let cover_url = compact_cover_url(
         value["al"]["picUrl"]
             .as_str()
@@ -137,7 +176,10 @@ fn parse_track_item(value: &Value) -> Option<PlaylistTrackItem> {
     Some(PlaylistTrackItem {
         id,
         name,
+        alias,
         artists,
+        album,
+        duration_ms,
         cover_url,
     })
 }
@@ -182,7 +224,16 @@ fn parse_playlist_item(value: &Value, cover_size: u32) -> Option<LibraryPlaylist
 fn parse_fm_track_item(value: &Value) -> Option<FmTrackItem> {
     let id = value["id"].as_i64()?;
     let name = value["name"].as_str().unwrap_or("未知歌曲").to_string();
+    let alias = parse_track_alias(value);
     let artists = parse_artist_names(value);
+    let album = value["album"]["name"]
+        .as_str()
+        .or_else(|| value["al"]["name"].as_str())
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty());
+    let duration_ms = value["dt"]
+        .as_u64()
+        .or_else(|| value["duration"].as_u64());
     let cover_url = compact_cover_url(
         value["album"]["picUrl"]
             .as_str()
@@ -192,7 +243,10 @@ fn parse_fm_track_item(value: &Value) -> Option<FmTrackItem> {
     Some(FmTrackItem {
         id,
         name,
+        alias,
         artists,
+        album,
+        duration_ms,
         cover_url,
     })
 }
@@ -200,7 +254,16 @@ fn parse_fm_track_item(value: &Value) -> Option<FmTrackItem> {
 fn parse_daily_track_item(value: &Value) -> Option<DailyTrackItem> {
     let id = value["id"].as_i64()?;
     let name = value["name"].as_str().unwrap_or("未知歌曲").to_string();
+    let alias = parse_track_alias(value);
     let artists = parse_artist_names(value);
+    let album = value["al"]["name"]
+        .as_str()
+        .or_else(|| value["album"]["name"].as_str())
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty());
+    let duration_ms = value["dt"]
+        .as_u64()
+        .or_else(|| value["duration"].as_u64());
     let cover_url = compact_cover_url(
         value["al"]["picUrl"]
             .as_str()
@@ -211,7 +274,10 @@ fn parse_daily_track_item(value: &Value) -> Option<DailyTrackItem> {
     Some(DailyTrackItem {
         id,
         name,
+        alias,
         artists,
+        album,
+        duration_ms,
         cover_url,
     })
 }
@@ -586,8 +652,3 @@ fn parse_lyric_lines(raw: &str) -> Vec<String> {
         .map(|line| line.to_string())
         .collect()
 }
-
-
-
-
-

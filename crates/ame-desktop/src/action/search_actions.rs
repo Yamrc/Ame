@@ -5,7 +5,10 @@ use anyhow::Result;
 pub struct SearchSongItem {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
 }
 
 use crate::action::runtime::{block_on, netease_client};
@@ -29,6 +32,18 @@ pub fn search_song_blocking(keyword: &str, cookie: Option<&str>) -> Result<Vec<S
         .filter_map(|song| {
             let id = song["id"].as_i64()?;
             let name = song["name"].as_str().unwrap_or("").to_string();
+            let alias = song["tns"]
+                .as_array()
+                .or_else(|| song["alia"].as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::trim))
+                        .filter(|item| !item.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" / ")
+                })
+                .filter(|alias| !alias.is_empty());
             let artists = song["artists"]
                 .as_array()
                 .map(|artists| {
@@ -40,8 +55,22 @@ pub fn search_song_blocking(keyword: &str, cookie: Option<&str>) -> Result<Vec<S
                 })
                 .filter(|artists| !artists.is_empty())
                 .unwrap_or_else(|| "未知艺人".to_string());
+            let album = song["album"]["name"]
+                .as_str()
+                .map(str::to_string)
+                .filter(|value| !value.trim().is_empty());
+            let duration_ms = song["duration"]
+                .as_u64()
+                .or_else(|| song["dt"].as_u64());
 
-            Some(SearchSongItem { id, name, artists })
+            Some(SearchSongItem {
+                id,
+                name,
+                alias,
+                artists,
+                album,
+                duration_ms,
+            })
         })
         .collect();
 

@@ -14,6 +14,7 @@ use crate::view::{daily_tracks, discover, home, library, login, next, playlist, 
 use super::{DataState, RootView};
 
 pub(super) struct RoutesModel {
+    pub current_playing_track_id: Option<i64>,
     pub home_recommend_playlists: DataState<Vec<library_actions::LibraryPlaylistItem>>,
     pub home_recommend_artists: DataState<Vec<library_actions::ArtistItem>>,
     pub home_new_albums: DataState<Vec<library_actions::AlbumItem>>,
@@ -107,6 +108,7 @@ impl RootView {
                         this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(SongInput {
                             id: track.id,
                             name: track.name,
+                            alias: track.alias,
                             artists: track.artists,
                         }));
                     } else {
@@ -198,18 +200,21 @@ impl RootView {
     fn build_search_rows(
         results: &[search::SearchSong],
         root_entity: &Entity<RootView>,
+        current_playing_track_id: Option<i64>,
     ) -> Vec<AnyElement> {
         results
             .iter()
             .cloned()
             .map(|song| {
+                let is_playing = current_playing_track_id == Some(song.id);
                 let song_for_click = song.clone();
                 let root_entity = root_entity.clone();
-                search::render_row(song, move |cx| {
+                search::render_row(song, is_playing, move |cx| {
                     root_entity.update(cx, |this, _| {
                         this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(SongInput {
                             id: song_for_click.id,
                             name: song_for_click.name.clone(),
+                            alias: song_for_click.alias.clone(),
                             artists: song_for_click.artists.clone(),
                         }))
                     });
@@ -224,8 +229,9 @@ impl RootView {
         error: Option<&str>,
         results: &[search::SearchSong],
         root_entity: &Entity<RootView>,
+        current_playing_track_id: Option<i64>,
     ) -> AnyElement {
-        let rows = Self::build_search_rows(results, root_entity);
+        let rows = Self::build_search_rows(results, root_entity, current_playing_track_id);
         search::render(keyword, loading, error, rows)
     }
 
@@ -294,6 +300,7 @@ impl RootView {
         model: RoutesModel,
     ) -> AnyElement {
         let RoutesModel {
+            current_playing_track_id,
             home_recommend_playlists: home_recommend_playlists_state,
             home_recommend_artists: home_recommend_artists_state,
             home_new_albums: home_new_albums_state,
@@ -400,8 +407,8 @@ impl RootView {
                     let collected_rows = Self::build_library_rows(&collected_items, &root_entity);
                     let preview_count = library_liked_tracks.len().min(12);
                     let preview_rows = preview_count.div_ceil(3).max(2);
-                    let preview_height = preview_rows as f32 * 52.0
-                        + (preview_rows.saturating_sub(1) as f32) * 8.0;
+                    let preview_height =
+                        preview_rows as f32 * 52.0 + (preview_rows.saturating_sub(1) as f32) * 8.0;
                     let preview_min_height = px(preview_height);
                     let title = auth_user_name
                         .as_deref()
@@ -440,26 +447,29 @@ impl RootView {
                             },
                             move |cx| {
                                 root_for_play.update(cx, |this, _| {
-                                    this.queue_kernel_command(
-                                        AppCommand::ReplaceQueueFromPlaylist(playlist_id),
-                                    )
+                                    this.queue_kernel_command(AppCommand::ReplaceQueueFromPlaylist(
+                                        playlist_id,
+                                    ))
                                 });
                             },
                         )
                     });
                     let preview_play = {
                         let root_entity = root_entity.clone();
-                        Arc::new(move |track: library_actions::PlaylistTrackItem, cx: &mut App| {
-                            root_entity.update(cx, |this, _| {
-                                this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(
-                                    SongInput {
-                                        id: track.id,
-                                        name: track.name,
-                                        artists: track.artists,
-                                    },
-                                ))
-                            });
-                        })
+                        Arc::new(
+                            move |track: library_actions::PlaylistTrackItem, cx: &mut App| {
+                                root_entity.update(cx, |this, _| {
+                                    this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(
+                                        SongInput {
+                                            id: track.id,
+                                            name: track.name,
+                                            alias: track.alias,
+                                            artists: track.artists,
+                                        },
+                                    ))
+                                });
+                            },
+                        )
                     };
                     let model = library::LibraryViewModel {
                         title: title.clone().into(),
@@ -516,6 +526,7 @@ impl RootView {
                         error.as_deref(),
                         &results,
                         &root_entity,
+                        current_playing_track_id,
                     )
                 }
             }))
@@ -536,6 +547,7 @@ impl RootView {
                         error.as_deref(),
                         &results,
                         &root_entity,
+                        current_playing_track_id,
                     )
                 }
             }))
@@ -552,7 +564,10 @@ impl RootView {
                             let play_track = search::SearchSong {
                                 id: track.id,
                                 name: track.name.clone(),
+                                alias: track.alias.clone(),
                                 artists: track.artists.clone(),
+                                album: track.album.clone(),
+                                duration_ms: track.duration_ms,
                             };
                             let queue_track = play_track.clone();
                             let root_for_play = root_entity.clone();
@@ -561,15 +576,20 @@ impl RootView {
                                 playlist::PlaylistTrackRow {
                                     id: track.id,
                                     name: track.name,
+                                    alias: track.alias,
                                     artists: track.artists,
+                                    album: track.album,
+                                    duration_ms: track.duration_ms,
                                     cover_url: track.cover_url,
                                 },
+                                current_playing_track_id == Some(track.id),
                                 move |cx| {
                                     root_for_play.update(cx, |this, _| {
                                         this.queue_kernel_command(AppCommand::EnqueueSongAndPlay(
                                             SongInput {
                                                 id: play_track.id,
                                                 name: play_track.name.clone(),
+                                                alias: play_track.alias.clone(),
                                                 artists: play_track.artists.clone(),
                                             },
                                         ))
@@ -581,6 +601,7 @@ impl RootView {
                                             SongInput {
                                                 id: queue_track.id,
                                                 name: queue_track.name.clone(),
+                                                alias: queue_track.alias.clone(),
                                                 artists: queue_track.artists.clone(),
                                             },
                                         ))
@@ -722,39 +743,66 @@ impl RootView {
                                 visible_range
                                     .map(|index| {
                                         let track = tracks[index].clone();
+                                        let is_playing =
+                                            current_playing_track_id == Some(track.id);
                                         let play_track = search::SearchSong {
                                             id: track.id,
                                             name: track.name.clone(),
+                                            alias: track.alias.clone(),
                                             artists: track.artists.clone(),
+                                            album: track.album.clone(),
+                                            duration_ms: track.duration_ms,
                                         };
                                         let queue_track = play_track.clone();
                                         let root_for_play = root_for_list.clone();
                                         let root_for_queue = root_for_list.clone();
-                                        nekowg::div().pb(px(8.)).child(playlist::track_row(
-                                            track,
-                                            move |cx| {
-                                                root_for_play.update(cx, |this, _| {
-                                                    this.queue_kernel_command(
-                                                        AppCommand::EnqueueSongAndPlay(SongInput {
-                                                            id: play_track.id,
-                                                            name: play_track.name.clone(),
-                                                            artists: play_track.artists.clone(),
-                                                        }),
-                                                    )
-                                                });
-                                            },
-                                            move |cx| {
-                                                root_for_queue.update(cx, |this, _| {
-                                                    this.queue_kernel_command(
-                                                        AppCommand::EnqueueSongOnly(SongInput {
-                                                            id: queue_track.id,
-                                                            name: queue_track.name.clone(),
-                                                            artists: queue_track.artists.clone(),
-                                                        }),
-                                                    )
-                                                });
-                                            },
-                                        ))
+                                        nekowg::div()
+                                            .w_full()
+                                            .pb(px(8.))
+                                            .child(playlist::track_row(
+                                                track,
+                                                is_playing,
+                                                move |cx| {
+                                                    root_for_play.update(cx, |this, _| {
+                                                        this.queue_kernel_command(
+                                                            AppCommand::EnqueueSongAndPlay(
+                                                                SongInput {
+                                                                    id: play_track.id,
+                                                                    name: play_track
+                                                                        .name
+                                                                        .clone(),
+                                                                    alias: play_track
+                                                                        .alias
+                                                                        .clone(),
+                                                                    artists: play_track
+                                                                        .artists
+                                                                        .clone(),
+                                                                },
+                                                            ),
+                                                        )
+                                                    });
+                                                },
+                                                move |cx| {
+                                                    root_for_queue.update(cx, |this, _| {
+                                                        this.queue_kernel_command(
+                                                            AppCommand::EnqueueSongOnly(
+                                                                SongInput {
+                                                                    id: queue_track.id,
+                                                                    name: queue_track
+                                                                        .name
+                                                                        .clone(),
+                                                                    alias: queue_track
+                                                                        .alias
+                                                                        .clone(),
+                                                                    artists: queue_track
+                                                                        .artists
+                                                                        .clone(),
+                                                                },
+                                                            ),
+                                                        )
+                                                    });
+                                                },
+                                            ))
                                     })
                                     .collect::<Vec<_>>()
                             },
@@ -878,9 +926,3 @@ impl RootView {
             .render(cx)
     }
 }
-
-
-
-
-
-

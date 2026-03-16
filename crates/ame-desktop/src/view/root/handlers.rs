@@ -224,6 +224,7 @@ impl RootView {
             .map(|item| super::PersistedQueueItem {
                 id: item.id,
                 name: item.name.clone(),
+                alias: item.alias.clone(),
                 artist: item.artist.clone(),
                 cover_url: item.cover_url.clone(),
             })
@@ -900,7 +901,10 @@ impl RootView {
                 .map(|track| playlist::PlaylistTrackRow {
                     id: track.id,
                     name: track.name,
+                    alias: track.alias,
                     artists: track.artists,
+                    album: track.album,
+                    duration_ms: track.duration_ms,
                     cover_url: track.cover_url,
                 })
                 .collect(),
@@ -1260,7 +1264,10 @@ impl RootView {
                     .map(|item| search::SearchSong {
                         id: item.id,
                         name: item.name,
+                        alias: item.alias,
                         artists: item.artists,
+                        album: item.album,
+                        duration_ms: item.duration_ms,
                     })
                     .collect();
                 self.search_state.loading = false;
@@ -1302,6 +1309,10 @@ impl RootView {
             .as_ref()
             .map(|meta| meta.artists.clone())
             .unwrap_or_else(|| song.artists.clone());
+        let alias = metadata
+            .as_ref()
+            .and_then(|meta| meta.alias.clone())
+            .or(song.alias.clone());
         let cover_url = metadata.and_then(|meta| meta.cover_url);
 
         let mut inserted_index = None;
@@ -1309,6 +1320,7 @@ impl RootView {
             player.enqueue(QueueItem {
                 id: song.id,
                 name: song.name.clone(),
+                alias,
                 artist: artists,
                 cover_url,
                 source_url: None,
@@ -1343,12 +1355,17 @@ impl RootView {
             .as_ref()
             .map(|meta| meta.artists.clone())
             .unwrap_or_else(|| song.artists.clone());
+        let alias = metadata
+            .as_ref()
+            .and_then(|meta| meta.alias.clone())
+            .or(song.alias.clone());
         let cover_url = metadata.and_then(|meta| meta.cover_url);
 
         self.player.update(cx, |player, _| {
             player.enqueue(QueueItem {
                 id: song.id,
                 name: song.name,
+                alias,
                 artist: artists,
                 cover_url,
                 source_url: None,
@@ -1378,6 +1395,7 @@ impl RootView {
                     .map(|track| QueueItem {
                         id: track.id,
                         name: track.name.clone(),
+                        alias: track.alias.clone(),
                         artist: track.artists.clone(),
                         cover_url: track.cover_url.clone(),
                         source_url: None,
@@ -1435,6 +1453,7 @@ impl RootView {
             .map(|track| QueueItem {
                 id: track.id,
                 name: track.name.clone(),
+                alias: track.alias.clone(),
                 artist: track.artists.clone(),
                 cover_url: track.cover_url.clone(),
                 source_url: None,
@@ -1717,6 +1736,9 @@ fn song_input_to_search_song(song: SongInput) -> search::SearchSong {
     search::SearchSong {
         id: song.id,
         name: song.name,
+        alias: song.alias,
         artists: song.artists,
+        album: None,
+        duration_ms: None,
     }
 }

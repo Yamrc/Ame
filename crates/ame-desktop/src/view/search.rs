@@ -1,42 +1,41 @@
-use nekowg::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
+use nekowg::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
 
-use crate::component::{button, theme};
+use crate::component::track_item::{self, TrackItemActions, TrackItemProps};
+use crate::component::theme;
 use crate::view::common;
 
 #[derive(Debug, Clone)]
 pub struct SearchSong {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
 }
 
-pub fn render_row(song: SearchSong, on_enqueue: impl Fn(&mut App) + 'static) -> AnyElement {
-    div()
-        .w_full()
-        .rounded_lg()
-        .bg(rgb(theme::COLOR_CARD_DARK))
-        .px_3()
-        .py_2()
-        .flex()
-        .items_center()
-        .justify_between()
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(div().font_weight(FontWeight::BOLD).child(song.name))
-                .child(
-                    div()
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .child(song.artists),
-                ),
-        )
-        .child(
-            button::pill_base("入队").on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                on_enqueue(cx);
-            }),
-        )
-        .into_any_element()
+pub fn render_row(
+    song: SearchSong,
+    is_playing: bool,
+    on_enqueue: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    track_item::render(
+        TrackItemProps {
+            id: song.id,
+            title: song.name,
+            alias: song.alias,
+            artists: song.artists,
+            album: song.album,
+            duration_ms: song.duration_ms,
+            cover_url: None,
+            show_cover: false,
+            is_playing,
+        },
+        TrackItemActions {
+            on_enqueue: Some(std::sync::Arc::new(on_enqueue)),
+            ..TrackItemActions::default()
+        },
+    )
 }
 
 pub fn render(

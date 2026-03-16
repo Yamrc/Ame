@@ -1,9 +1,8 @@
-use nekowg::{
-    AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, relative, rgb,
-};
+use nekowg::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, relative, rgb};
 use std::sync::Arc;
 
 use crate::action::library_actions::PlaylistTrackItem;
+use crate::component::playlist_item::{self, PlaylistItemActions, PlaylistItemProps};
 use crate::component::{button, icon, theme};
 use crate::util::url::image_resize_url;
 use crate::view::common;
@@ -53,41 +52,19 @@ pub struct LibraryActions {
 }
 
 pub fn playlist_row(item: LibraryPlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
-    div()
-        .w_full()
-        .rounded_lg()
-        .bg(rgb(theme::COLOR_CARD_DARK))
-        .px_4()
-        .py_3()
-        .flex()
-        .items_center()
-        .justify_between()
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_size(px(18.))
-                        .font_weight(FontWeight::BOLD)
-                        .child(item.name),
-                )
-                .child(
-                    div()
-                        .text_size(px(14.))
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .child(format!(
-                            "{} 首 · by {}",
-                            item.track_count, item.creator_name
-                        )),
-                ),
-        )
-        .child(
-            button::pill_base("打开").on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                on_open(cx);
-            }),
-        )
-        .into_any_element()
+    playlist_item::render(
+        PlaylistItemProps {
+            id: item.id,
+            name: item.name,
+            creator: item.creator_name,
+            track_count: Some(item.track_count),
+            cover_url: item.cover_url,
+            cover_size: px(58.),
+        },
+        PlaylistItemActions {
+            on_open: Arc::new(on_open),
+        },
+    )
 }
 
 pub fn render(mut model: LibraryViewModel, actions: LibraryActions) -> AnyElement {
@@ -134,12 +111,7 @@ pub fn render(mut model: LibraryViewModel, actions: LibraryActions) -> AnyElemen
                 .flex()
                 .items_center()
                 .child(liked_card)
-                .child(
-                    div()
-                        .w(relative(0.671))
-                        .ml(px(36.))
-                        .child(liked_preview),
-                ),
+                .child(div().w(relative(0.671)).ml(px(36.)).child(liked_preview)),
         )
         .child(div().w_full().mt(px(20.)).child(status))
         .child(div().w_full().mt(px(20.)).child(tabs))
@@ -324,8 +296,7 @@ fn liked_preview_list(
                                 .truncate()
                                 .child(track.artists.clone()),
                         ),
-                )
-                ;
+                );
 
             button::icon_interactive(
                 format!("library-liked-preview-{}", track.id),

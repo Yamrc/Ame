@@ -29,8 +29,8 @@ use crate::entity::app::{AppEntity, CloseBehavior};
 use crate::entity::audio_bridge::AudioBridgeEntity;
 use crate::entity::player::{PlaybackMode, PlayerEntity, QueueItem};
 use crate::kernel::{AppCommand, KernelRuntime};
-use crate::view::{library, login, playlist, search};
 use crate::util::url::image_resize_url;
+use crate::view::{library, login, playlist, search};
 use std::sync::Arc;
 
 const KEY_PLAYER_VOLUME: &str = "player.volume";
@@ -77,6 +77,7 @@ impl<T: Default> Default for DataState<T> {
 struct PersistedQueueItem {
     id: i64,
     name: String,
+    alias: Option<String>,
     artist: String,
     cover_url: Option<String>,
 }
@@ -213,6 +214,7 @@ impl RootView {
                             .map(|item| QueueItem {
                                 id: item.id,
                                 name: item.name,
+                                alias: item.alias,
                                 artist: item.artist,
                                 cover_url: item.cover_url,
                                 source_url: None,
@@ -538,6 +540,7 @@ impl Render for RootView {
             root_entity,
             player_entity,
             routes::RoutesModel {
+                current_playing_track_id: player.current_item().map(|item| item.id),
                 home_recommend_playlists: self.home_recommend_playlists.clone(),
                 home_recommend_artists: self.home_recommend_artists.clone(),
                 home_new_albums: self.home_new_albums.clone(),
@@ -573,7 +576,13 @@ impl Render for RootView {
                     item.cover_url.clone(),
                 )
             })
-            .unwrap_or_else(|| ("未播放".to_string(), "未知作家".to_string(), None));
+            .unwrap_or_else(|| {
+                (
+                    "未播放".to_string(),
+                    "未知作家".to_string(),
+                    None,
+                )
+            });
         let bottom = bottom_bar::render(
             &bottom_bar::BottomBarModel {
                 current_song: current_song.into(),
@@ -663,6 +672,8 @@ impl Render for RootView {
             .size_full()
             .bg(rgb(theme::COLOR_BODY_BG_DARK))
             .text_color(rgb(theme::COLOR_TEXT_DARK))
+            .font_family("Noto Sans JP")
+            .font_family("Noto Sans SC")
             .flex()
             .flex_col()
             .overflow_hidden()
@@ -759,7 +770,3 @@ impl RootView {
         }
     }
 }
-
-
-
-

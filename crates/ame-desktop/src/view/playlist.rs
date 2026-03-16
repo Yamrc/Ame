@@ -1,7 +1,9 @@
-use nekowg::{AnyElement, App, FontWeight, MouseButton, div, prelude::*, px, rgb};
+use std::sync::Arc;
+
+use nekowg::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
 use serde::{Deserialize, Serialize};
 
-use crate::component::button;
+use crate::component::track_item::{self, TrackItemActions, TrackItemProps};
 use crate::component::theme;
 use crate::view::common;
 
@@ -9,7 +11,10 @@ use crate::view::common;
 pub struct PlaylistTrackRow {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
     pub cover_url: Option<String>,
 }
 
@@ -24,54 +29,28 @@ pub struct PlaylistPage {
 
 pub fn track_row(
     item: PlaylistTrackRow,
+    is_playing: bool,
     on_play: impl Fn(&mut App) + 'static,
     on_enqueue: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
-    div()
-        .w_full()
-        .rounded_lg()
-        .bg(rgb(theme::COLOR_CARD_DARK))
-        .px_4()
-        .py_3()
-        .flex()
-        .items_center()
-        .justify_between()
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_size(px(18.))
-                        .font_weight(FontWeight::BOLD)
-                        .child(item.name),
-                )
-                .child(
-                    div()
-                        .text_size(px(14.))
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .child(item.artists),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(button::pill_base("播放").on_mouse_down(
-                    MouseButton::Left,
-                    move |_, _, cx| {
-                        on_play(cx);
-                    },
-                ))
-                .child(button::pill_base("入队").on_mouse_down(
-                    MouseButton::Left,
-                    move |_, _, cx| {
-                        on_enqueue(cx);
-                    },
-                )),
-        )
-        .into_any_element()
+    track_item::render(
+        TrackItemProps {
+            id: item.id,
+            title: item.name,
+            alias: item.alias,
+            artists: item.artists,
+            album: item.album,
+            duration_ms: item.duration_ms,
+            cover_url: item.cover_url,
+            show_cover: true,
+            is_playing,
+        },
+        TrackItemActions {
+            on_play: Some(Arc::new(on_play)),
+            on_enqueue: Some(Arc::new(on_enqueue)),
+            ..TrackItemActions::default()
+        },
+    )
 }
 
 pub fn render(

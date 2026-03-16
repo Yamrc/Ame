@@ -35,6 +35,7 @@ pub fn fetch_track_url_blocking(track_id: i64, cookie: Option<&str>) -> Result<S
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrackMetadata {
     pub artists: String,
+    pub alias: Option<String>,
     pub cover_url: Option<String>,
 }
 
@@ -59,8 +60,24 @@ pub fn fetch_track_metadata_blocking(track_id: i64, cookie: Option<&str>) -> Res
         })
         .filter(|artists| !artists.is_empty())
         .unwrap_or_else(|| "未知艺人".to_string());
+    let alias = song["tns"]
+        .as_array()
+        .or_else(|| song["alia"].as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::trim))
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+                .join(" / ")
+        })
+        .filter(|alias| !alias.is_empty());
 
     let cover_url = compact_cover_url(song["al"]["picUrl"].as_str(), 64);
 
-    Ok(TrackMetadata { artists, cover_url })
+    Ok(TrackMetadata {
+        artists,
+        alias,
+        cover_url,
+    })
 }

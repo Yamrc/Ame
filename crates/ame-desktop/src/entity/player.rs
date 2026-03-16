@@ -13,6 +13,7 @@ pub enum PlaybackMode {
 pub struct QueueItem {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artist: String,
     pub cover_url: Option<String>,
     pub source_url: Option<String>,
@@ -204,6 +205,7 @@ mod tests {
         p.enqueue(QueueItem {
             id: 1,
             name: "A".into(),
+            alias: None,
             artist: "Artist A".into(),
             cover_url: None,
             source_url: None,
@@ -211,6 +213,7 @@ mod tests {
         p.enqueue(QueueItem {
             id: 2,
             name: "B".into(),
+            alias: None,
             artist: "Artist B".into(),
             cover_url: None,
             source_url: None,
@@ -218,6 +221,7 @@ mod tests {
         p.enqueue(QueueItem {
             id: 3,
             name: "C".into(),
+            alias: None,
             artist: "Artist C".into(),
             cover_url: None,
             source_url: None,

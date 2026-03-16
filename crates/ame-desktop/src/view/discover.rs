@@ -1,7 +1,10 @@
-use nekowg::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, rgb};
+use std::sync::Arc;
 
-use crate::component::{button, theme};
-use crate::util::url::image_resize_url;
+use nekowg::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
+
+use crate::component::button;
+use crate::component::playlist_item::{self, PlaylistItemActions, PlaylistItemProps};
+use crate::component::theme;
 use crate::view::common;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,60 +20,19 @@ pub fn playlist_card(
     item: DiscoverPlaylistCard,
     on_open: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
-    div()
-        .w_full()
-        .rounded_lg()
-        .bg(rgb(theme::COLOR_CARD_DARK))
-        .px_4()
-        .py_3()
-        .flex()
-        .items_center()
-        .justify_between()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(12.))
-                .child(match item.cover_url.clone() {
-                    Some(url) => img(image_resize_url(&url, "256y256"))
-                        .id(format!("discover-playlist-cover-{}", &url))
-                        .size(px(58.))
-                        .rounded_md()
-                        .overflow_hidden()
-                        .into_any_element(),
-                    None => div()
-                        .size(px(58.))
-                        .rounded_md()
-                        .bg(rgb(0x3B3B3B))
-                        .into_any_element(),
-                })
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            div()
-                                .text_size(px(18.))
-                                .font_weight(FontWeight::BOLD)
-                                .child(item.name),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(14.))
-                                .text_color(rgb(theme::COLOR_SECONDARY))
-                                .child(format!(
-                                    "{} 首 · by {}",
-                                    item.track_count, item.creator_name
-                                )),
-                        ),
-                ),
-        )
-        .child(
-            button::pill_base("打开").on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                on_open(cx);
-            }),
-        )
-        .into_any_element()
+    playlist_item::render(
+        PlaylistItemProps {
+            id: item.id,
+            name: item.name,
+            creator: item.creator_name,
+            track_count: Some(item.track_count),
+            cover_url: item.cover_url,
+            cover_size: px(58.),
+        },
+        PlaylistItemActions {
+            on_open: Arc::new(on_open),
+        },
+    )
 }
 
 pub fn render(loading: bool, error: Option<&str>, rows: Vec<AnyElement>) -> AnyElement {

@@ -619,4 +619,3 @@ mod tests {
         assert!(state.scrollbar_opacity(&config, start + Duration::from_millis(250)) < 0.05);
     }
 }
-

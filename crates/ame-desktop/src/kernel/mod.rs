@@ -8,6 +8,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 pub struct SongInput {
     pub id: i64,
     pub name: String,
+    pub alias: Option<String>,
     pub artists: String,
 }
 
