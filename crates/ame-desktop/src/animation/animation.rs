@@ -371,50 +371,58 @@ impl<E: IntoElement + StatefulInteractiveElement + ParentElement + FluentBuilder
             .get(&Event::Click)
             .cloned()
             .unwrap_or_else(|| (Duration::default(), Arc::new(Linear)));
+        let should_bind_hover = on_hover_cb.is_some() || hover_mod.is_some();
+        let should_bind_click = on_click_cb.is_some() || click_mod.is_some();
 
-        root.on_hover(move |hovered, window, app| {
-            if let Some(cb) = &on_hover_cb {
-                cb(hovered, window, app);
-            }
+        if should_bind_hover {
+            root = root.on_hover(move |hovered, window, app| {
+                if let Some(cb) = &on_hover_cb {
+                    cb(hovered, window, app);
+                }
 
-            if *hovered {
-                Self::animated_handle_persistent(
-                    hovered,
-                    id_for_hover.clone(),
-                    Event::Hover,
-                    hover_mod.clone(),
-                    hover_transition.clone(),
-                    AnimationPriority::Medium,
-                );
-            } else {
-                TransitionRegistry::remove_persistent_context(&id_for_hover, Event::Hover);
+                if *hovered {
+                    Self::animated_handle_persistent(
+                        hovered,
+                        id_for_hover.clone(),
+                        Event::Hover,
+                        hover_mod.clone(),
+                        hover_transition.clone(),
+                        AnimationPriority::Medium,
+                    );
+                } else {
+                    TransitionRegistry::remove_persistent_context(&id_for_hover, Event::Hover);
+                    Self::animated_handle(
+                        hovered,
+                        id_for_hover.clone(),
+                        Event::Hover,
+                        hover_mod.clone(),
+                        hover_transition.clone(),
+                        AnimationPriority::High,
+                        false,
+                    );
+                }
+            });
+        }
+
+        if should_bind_click {
+            root = root.on_click(move |event, window, app| {
+                if let Some(cb) = &on_click_cb {
+                    cb(event, window, app);
+                }
+
                 Self::animated_handle(
-                    hovered,
-                    id_for_hover.clone(),
-                    Event::Hover,
-                    hover_mod.clone(),
-                    hover_transition.clone(),
+                    event,
+                    id_for_click.clone(),
+                    Event::Click,
+                    click_mod.clone(),
+                    click_transition.clone(),
                     AnimationPriority::High,
-                    false,
+                    true,
                 );
-            }
-        })
-        .on_click(move |event, window, app| {
-            if let Some(cb) = &on_click_cb {
-                cb(event, window, app);
-            }
+            });
+        }
 
-            Self::animated_handle(
-                event,
-                id_for_click.clone(),
-                Event::Click,
-                click_mod.clone(),
-                click_transition.clone(),
-                AnimationPriority::High,
-                true,
-            );
-        })
-        .children(self.children)
+        root.children(self.children)
     }
 }
 
