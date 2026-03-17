@@ -1,6 +1,71 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TrackFreeTrialPrivilegeDto {
+    #[serde(default, rename = "cannotListenReason")]
+    pub cannot_listen_reason: Option<i64>,
+    #[serde(default, rename = "freeLimitTagType")]
+    pub free_limit_tag_type: Option<i64>,
+    #[serde(default, rename = "listenType")]
+    pub listen_type: Option<i64>,
+    #[serde(default, rename = "playReason")]
+    pub play_reason: Option<String>,
+    #[serde(default, rename = "resConsumable")]
+    pub res_consumable: Option<bool>,
+    #[serde(default, rename = "userConsumable")]
+    pub user_consumable: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TrackFreeTimeTrialPrivilegeDto {
+    #[serde(default, rename = "remainTime")]
+    pub remain_time: Option<u64>,
+    #[serde(default, rename = "resConsumable")]
+    pub res_consumable: Option<bool>,
+    #[serde(default)]
+    pub r#type: Option<i64>,
+    #[serde(default, rename = "userConsumable")]
+    pub user_consumable: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TrackUrlDto {
+    pub id: i64,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub code: Option<i64>,
+    #[serde(default)]
+    pub level: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub fee: Option<i64>,
+    #[serde(default)]
+    pub payed: Option<i64>,
+    #[serde(default, rename = "encodeType")]
+    pub encode_type: Option<String>,
+    #[serde(default)]
+    pub br: Option<u64>,
+    #[serde(default)]
+    pub size: Option<u64>,
+    #[serde(default)]
+    pub time: Option<u64>,
+    #[serde(default, rename = "freeTrialPrivilege")]
+    pub free_trial_privilege: Option<TrackFreeTrialPrivilegeDto>,
+    #[serde(default, rename = "freeTimeTrialPrivilege")]
+    pub free_time_trial_privilege: Option<TrackFreeTimeTrialPrivilegeDto>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TrackUrlResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub data: Vec<TrackUrlDto>,
+}
 
 pub struct TrackUrlRequest {
     pub ids: Vec<i64>,
@@ -21,7 +86,7 @@ impl TrackUrlRequest {
 }
 
 impl ApiRequest for TrackUrlRequest {
-    type Response = Value;
+    type Response = TrackUrlResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/song/enhance/player/url/v1"
@@ -75,18 +140,13 @@ mod tests {
     async fn live_eapi_song_url_v1_request() {
         let client = crate::NeteaseClient::new();
         let request = TrackUrlRequest::new(vec![409926, 1384286544]);
-        let response: serde_json::Value = client
+        let response = client
             .eapi_request(request)
             .await
             .expect("eapi song_url_v1 request failed");
 
-        assert_eq!(response["code"].as_i64(), Some(200));
-        assert!(response["data"].is_array());
-        assert!(response["data"][0]["id"].as_i64().is_some());
-
-        // println!(
-        //     "{:?}, {:?}",
-        //     response["data"][0]["url"], response["data"][1]["url"]
-        // )
+        assert_eq!(response.code, 200);
+        assert!(!response.data.is_empty());
+        assert!(response.data[0].id > 0);
     }
 }

@@ -7,7 +7,7 @@ pub mod nav_bar;
 pub mod playlist_item;
 pub mod scroll;
 pub mod slider;
-pub mod track_item;
 pub mod theme;
 pub mod title_bar;
+pub mod track_item;
 pub mod virtual_list;

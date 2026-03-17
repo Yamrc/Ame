@@ -24,18 +24,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: step::checkout
+        uses: actions/checkout@v6
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Setup Rust environment
+      - name: step::setup_rust
         uses: ./.github/actions/rust-setup
         with:
           with-clippy: "true"
           linux-packages: ${{ env.LINUX_PACKAGES }}
 
-      - name: Cargo check and clippy
+      - name: step::clippy
         run: |
           cargo check -q --workspace
           cargo clippy --workspace --all-targets -- -D warnings
@@ -54,20 +54,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: step::checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Download build artifacts
+      - name: step::download_artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: ame-*
           path: dist
           merge-multiple: true
 
-      - name: Resolve changelog range
+      - name: step::resolve_changelog_range
         id: changelog_range
         shell: bash
         run: |
@@ -81,7 +81,7 @@ jobs:
             echo "from_ref=$root_commit" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate release notes
+      - name: step::generate_release_notes
         id: changelog
         uses: mikepenz/release-changelog-builder-action@v5
         with:
@@ -139,7 +139,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create or update release
+      - name: step::create_or_update_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}

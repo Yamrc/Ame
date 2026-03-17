@@ -1,6 +1,15 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::common::models::PlaylistDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct UserPlaylistResponse {
+    pub code: i64,
+    #[serde(default, rename = "playlist")]
+    pub playlists: Vec<PlaylistDto>,
+}
 
 pub struct UserPlaylistRequest {
     pub uid: i64,
@@ -19,7 +28,7 @@ impl UserPlaylistRequest {
 }
 
 impl ApiRequest for UserPlaylistRequest {
-    type Response = Value;
+    type Response = UserPlaylistResponse;
 
     fn endpoint(&self) -> &'static str {
         "/user/playlist"

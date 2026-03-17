@@ -1,12 +1,17 @@
 use ame_core::credential::AuthBundle;
 use ame_netease::NeteaseClient;
+use ame_netease::api::common::models::UserProfileDto;
 use ame_netease::api::user::login_qr_check::LoginQrCheckRequest;
+use ame_netease::api::user::login_qr_check::LoginQrCheckResponse;
 use ame_netease::api::user::login_qr_key::LoginQrKeyRequest;
+use ame_netease::api::user::login_qr_key::LoginQrKeyResponse;
 use ame_netease::api::user::login_refresh::LoginRefreshRequest;
+use ame_netease::api::user::login_refresh::LoginRefreshResponse;
 use ame_netease::api::user::register_anonymous::RegisterAnonymousRequest;
+use ame_netease::api::user::register_anonymous::RegisterAnonymousResponse;
 use ame_netease::api::user::status::LoginStatusRequest;
+use ame_netease::api::user::status::LoginStatusResponse;
 use anyhow::Result;
-use serde_json::Value;
 
 use crate::action::runtime::{block_on, netease_client};
 
@@ -16,8 +21,8 @@ const CSRF: &str = "__csrf";
 const MUSIC_R_T: &str = "MUSIC_R_T";
 
 #[derive(Debug, Clone)]
-pub struct ResponseWithCookies {
-    pub body: Value,
+pub struct ResponseWithCookies<T> {
+    pub body: T,
     pub set_cookie: Vec<String>,
 }
 
@@ -61,19 +66,27 @@ pub fn merge_bundle_from_set_cookie(bundle: &mut AuthBundle, set_cookie: &[Strin
     changed
 }
 
-pub fn fetch_login_qr_key_blocking(cookie: Option<&str>) -> Result<ResponseWithCookies> {
+pub fn fetch_login_qr_key_blocking(
+    cookie: Option<&str>,
+) -> Result<ResponseWithCookies<LoginQrKeyResponse>> {
     let client = netease_client(cookie);
     let body = block_on(client.eapi_request(LoginQrKeyRequest))?;
-    Ok(response_with_cookies(&client, body))
+    Ok(response_with_cookies(&client, body, None))
 }
 
-pub fn check_login_qr_blocking(key: &str, cookie: Option<&str>) -> Result<ResponseWithCookies> {
+pub fn check_login_qr_blocking(
+    key: &str,
+    cookie: Option<&str>,
+) -> Result<ResponseWithCookies<LoginQrCheckResponse>> {
     let client = netease_client(cookie);
     let body = block_on(client.eapi_request(LoginQrCheckRequest::new(key)))?;
-    Ok(response_with_cookies(&client, body))
+    let cookie = body.cookie.clone();
+    Ok(response_with_cookies(&client, body, cookie.as_deref()))
 }
 
-pub fn register_anonymous_blocking(cookie: Option<&str>) -> Result<ResponseWithCookies> {
+pub fn register_anonymous_blocking(
+    cookie: Option<&str>,
+) -> Result<ResponseWithCookies<RegisterAnonymousResponse>> {
     let cookie = cookie
         .filter(|it| !it.trim().is_empty())
         .map(ToString::to_string)
@@ -84,32 +97,36 @@ pub fn register_anonymous_blocking(cookie: Option<&str>) -> Result<ResponseWithC
 
     let body = block_on(client.weapi_request(RegisterAnonymousRequest::new()))?;
     let mut set_cookie = client.take_last_set_cookie();
-    set_cookie.extend(extract_cookie_from_body(&body));
+    set_cookie.extend(extract_cookie_from_body(body.cookie.as_deref()));
     Ok(ResponseWithCookies { body, set_cookie })
 }
 
-pub fn fetch_login_status_blocking(cookie: Option<&str>) -> Result<Value> {
+pub fn fetch_login_status_blocking(cookie: Option<&str>) -> Result<LoginStatusResponse> {
     let client = netease_client(cookie);
     block_on(client.weapi_request(LoginStatusRequest))
 }
 
-pub fn refresh_login_token_blocking(cookie: Option<&str>) -> Result<ResponseWithCookies> {
+pub fn refresh_login_token_blocking(
+    cookie: Option<&str>,
+) -> Result<ResponseWithCookies<LoginRefreshResponse>> {
     let client = netease_client(cookie);
     let body = block_on(client.eapi_request(LoginRefreshRequest))?;
-    Ok(response_with_cookies(&client, body))
+    let cookie = body.cookie.clone();
+    Ok(response_with_cookies(&client, body, cookie.as_deref()))
 }
 
-pub fn login_summary_text(value: &Value) -> Option<String> {
-    let profile = value
-        .get("data")
-        .and_then(|data| data.get("profile"))
-        .or_else(|| value.get("profile"))?;
-    let nickname = profile["nickname"].as_str().unwrap_or_default();
-    let user_id = profile["userId"].as_i64().unwrap_or_default();
+pub fn login_summary_text(value: &LoginStatusResponse) -> Option<String> {
+    let profile = value.profile()?;
+    let nickname = profile.nickname.as_deref().unwrap_or_default();
+    let user_id = profile.user_id.unwrap_or_default();
     if !nickname.is_empty() && user_id > 0 {
         return Some(format!("{nickname} (#{user_id})"));
     }
     None
+}
+
+pub fn login_profile(value: &LoginStatusResponse) -> Option<&UserProfileDto> {
+    value.profile()
 }
 
 fn replace_if_changed(slot: &mut Option<String>, value: String) -> bool {
@@ -129,21 +146,23 @@ fn parse_cookie_fragment(raw: &str) -> Option<(String, String)> {
     Some((key.trim().to_string(), value.trim().to_string()))
 }
 
-fn extract_cookie_from_body(body: &Value) -> Vec<String> {
-    if let Some(cookie) = body.get("cookie").and_then(Value::as_str) {
-        return cookie
-            .split(";;")
-            .map(str::trim)
-            .filter(|part| !part.is_empty())
-            .map(ToString::to_string)
-            .collect();
-    }
-    Vec::new()
+fn extract_cookie_from_body(cookie: Option<&str>) -> Vec<String> {
+    cookie
+        .unwrap_or_default()
+        .split(";;")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
 
-fn response_with_cookies(client: &NeteaseClient, body: Value) -> ResponseWithCookies {
+fn response_with_cookies<T>(
+    client: &NeteaseClient,
+    body: T,
+    cookie: Option<&str>,
+) -> ResponseWithCookies<T> {
     let mut set_cookie = client.take_last_set_cookie();
-    set_cookie.extend(extract_cookie_from_body(&body));
+    set_cookie.extend(extract_cookie_from_body(cookie));
     ResponseWithCookies { body, set_cookie }
 }
 

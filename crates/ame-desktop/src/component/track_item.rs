@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nekowg::{
-    AnyElement, App, FontWeight, HighlightStyle, MouseButton, ObjectFit, SharedString,
-    StyledText, div, img, prelude::*, px, rgb, rgba,
+    AnyElement, App, FontWeight, HighlightStyle, MouseButton, ObjectFit, SharedString, StyledText,
+    div, img, prelude::*, px, rgb, rgba,
 };
 
 use crate::animation::{Linear, TransitionExt};
@@ -116,7 +116,9 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
         .cursor_pointer()
         .when(on_play_row.is_some(), |this| {
             this.on_mouse_down(MouseButton::Left, move |event, _, cx| {
-                if event.click_count >= 2 && let Some(on_play) = on_play_row.as_ref() {
+                if event.click_count >= 2
+                    && let Some(on_play) = on_play_row.as_ref()
+                {
                     on_play(cx);
                 }
             })

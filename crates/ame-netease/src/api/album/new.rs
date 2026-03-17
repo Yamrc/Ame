@@ -1,6 +1,15 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::common::models::AlbumDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct AlbumNewResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub albums: Vec<AlbumDto>,
+}
 
 pub struct AlbumNewRequest {
     limit: u32,
@@ -19,7 +28,7 @@ impl AlbumNewRequest {
 }
 
 impl ApiRequest for AlbumNewRequest {
-    type Response = Value;
+    type Response = AlbumNewResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/album/new"
@@ -55,5 +64,17 @@ mod tests {
                 "area": "ALL",
             })
         );
+    }
+
+    #[tokio::test]
+    async fn live_album_new_request() {
+        let client = crate::NeteaseClient::new();
+        let response = client
+            .weapi_request(AlbumNewRequest::new(5, 0, "ALL"))
+            .await
+            .expect("album new request failed");
+
+        assert_eq!(response.code, 200);
+        assert!(!response.albums.is_empty());
     }
 }

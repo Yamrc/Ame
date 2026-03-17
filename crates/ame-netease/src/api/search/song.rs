@@ -1,6 +1,21 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::common::models::TrackDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SearchSongResult {
+    #[serde(default)]
+    pub songs: Vec<TrackDto>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SearchSongResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub result: SearchSongResult,
+}
 
 pub struct SearchSongRequest {
     pub keywords: String,
@@ -19,7 +34,7 @@ impl SearchSongRequest {
 }
 
 impl ApiRequest for SearchSongRequest {
-    type Response = Value;
+    type Response = SearchSongResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/search/get"
@@ -53,14 +68,12 @@ mod tests {
     async fn live_weapi_search_request() {
         let client = crate::NeteaseClient::new();
         let request = SearchSongRequest::new("夕日坂");
-        let response: serde_json::Value = client
+        let response = client
             .weapi_request(request)
             .await
             .expect("weapi search request failed");
 
-        assert_eq!(response["code"].as_i64(), Some(200));
-        assert!(response["result"]["songs"].is_array());
-
-        // println!("{:?}", response["result"]);
+        assert_eq!(response.code, 200);
+        assert!(!response.result.songs.is_empty());
     }
 }

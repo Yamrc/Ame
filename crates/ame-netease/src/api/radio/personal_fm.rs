@@ -1,6 +1,15 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::api::common::models::TrackDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PersonalFmResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub data: Vec<TrackDto>,
+}
 
 pub struct PersonalFmRequest;
 
@@ -17,7 +26,7 @@ impl Default for PersonalFmRequest {
 }
 
 impl ApiRequest for PersonalFmRequest {
-    type Response = Value;
+    type Response = PersonalFmResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/v1/radio/get"

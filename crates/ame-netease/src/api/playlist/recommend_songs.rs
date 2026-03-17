@@ -1,6 +1,23 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::common::models::TrackDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RecommendSongsData {
+    #[serde(default, rename = "dailySongs")]
+    pub daily_songs: Vec<TrackDto>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RecommendSongsResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub data: RecommendSongsData,
+    #[serde(default, rename = "dailySongs")]
+    pub daily_songs: Vec<TrackDto>,
+}
 
 pub struct RecommendSongsRequest;
 
@@ -17,7 +34,7 @@ impl Default for RecommendSongsRequest {
 }
 
 impl ApiRequest for RecommendSongsRequest {
-    type Response = Value;
+    type Response = RecommendSongsResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/v3/discovery/recommend/songs"

@@ -163,51 +163,45 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
         .flex()
         .items_center()
         .gap_2()
-        .child(
-            button::icon_interactive(
-                "player-prev",
-                button::icon_base(button::ButtonStyle::default())
-                    .size(px(36.))
-                    .text_color(rgb(icon_color_main))
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| prev_action(cx))
-                    .child(icon::render(
-                        IconName::Previous,
-                        icon_size_sm,
-                        icon_color_main,
-                    )),
-                button::ButtonStyle::default(),
-            ),
-        )
-        .child(
-            button::icon_interactive(
-                "player-toggle",
-                button::icon_base(button::ButtonStyle::default())
-                    .size(px(44.))
-                    .text_color(rgb(icon_color_main))
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| toggle_action(cx))
-                    .child(icon::render(
-                        if model.is_playing {
-                            IconName::Pause
-                        } else {
-                            IconName::Play
-                        },
-                        icon_size_md,
-                        icon_color_main,
-                    )),
-                button::ButtonStyle::default(),
-            ),
-        )
-        .child(
-            button::icon_interactive(
-                "player-next",
-                button::icon_base(button::ButtonStyle::default())
-                    .size(px(36.))
-                    .text_color(rgb(icon_color_main))
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| next_action(cx))
-                    .child(icon::render(IconName::Next, icon_size_sm, icon_color_main)),
-                button::ButtonStyle::default(),
-            ),
-        )
+        .child(button::icon_interactive(
+            "player-prev",
+            button::icon_base(button::ButtonStyle::default())
+                .size(px(36.))
+                .text_color(rgb(icon_color_main))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| prev_action(cx))
+                .child(icon::render(
+                    IconName::Previous,
+                    icon_size_sm,
+                    icon_color_main,
+                )),
+            button::ButtonStyle::default(),
+        ))
+        .child(button::icon_interactive(
+            "player-toggle",
+            button::icon_base(button::ButtonStyle::default())
+                .size(px(44.))
+                .text_color(rgb(icon_color_main))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| toggle_action(cx))
+                .child(icon::render(
+                    if model.is_playing {
+                        IconName::Pause
+                    } else {
+                        IconName::Play
+                    },
+                    icon_size_md,
+                    icon_color_main,
+                )),
+            button::ButtonStyle::default(),
+        ))
+        .child(button::icon_interactive(
+            "player-next",
+            button::icon_base(button::ButtonStyle::default())
+                .size(px(36.))
+                .text_color(rgb(icon_color_main))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| next_action(cx))
+                .child(icon::render(IconName::Next, icon_size_sm, icon_color_main)),
+            button::ButtonStyle::default(),
+        ))
         .into_any_element();
 
     let queue_action = actions.on_open_queue.clone();
@@ -216,32 +210,28 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
         .flex()
         .items_center()
         .gap_1()
-        .child(
-            button::icon_interactive(
-                "player-queue",
-                button::icon_base(button::ButtonStyle::default())
-                    .size(px(36.))
-                    .text_color(rgb(icon_color_main))
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| queue_action(cx))
-                    .child(icon::render(IconName::List, icon_size_sm, icon_color_main)),
-                button::ButtonStyle::default(),
-            ),
-        )
-        .child(
-            button::icon_interactive(
-                "player-mode",
-                button::icon_base(button::ButtonStyle::default())
-                    .size(px(36.))
-                    .text_color(rgb(mode_color))
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| cycle_mode_action(cx))
-                    .child(icon::render(
-                        mode_icon(model.mode),
-                        icon_size_sm,
-                        mode_color,
-                    )),
-                button::ButtonStyle::default(),
-            ),
-        )
+        .child(button::icon_interactive(
+            "player-queue",
+            button::icon_base(button::ButtonStyle::default())
+                .size(px(36.))
+                .text_color(rgb(icon_color_main))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| queue_action(cx))
+                .child(icon::render(IconName::List, icon_size_sm, icon_color_main)),
+            button::ButtonStyle::default(),
+        ))
+        .child(button::icon_interactive(
+            "player-mode",
+            button::icon_base(button::ButtonStyle::default())
+                .size(px(36.))
+                .text_color(rgb(mode_color))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| cycle_mode_action(cx))
+                .child(icon::render(
+                    mode_icon(model.mode),
+                    icon_size_sm,
+                    mode_color,
+                )),
+            button::ButtonStyle::default(),
+        ))
         .child(button::icon_interactive(
             "player-volume",
             button::icon_base(button::ButtonStyle::default())

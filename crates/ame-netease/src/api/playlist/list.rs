@@ -1,6 +1,15 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::common::models::PlaylistDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PlaylistListResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub playlists: Vec<PlaylistDto>,
+}
 
 pub struct PlaylistListRequest {
     cat: String,
@@ -31,7 +40,7 @@ impl PlaylistListRequest {
 }
 
 impl ApiRequest for PlaylistListRequest {
-    type Response = Value;
+    type Response = PlaylistListResponse;
 
     fn endpoint(&self) -> &'static str {
         "/playlist/list"
@@ -63,5 +72,17 @@ mod tests {
         assert_eq!(payload["order"].as_str(), Some("hot"));
         assert_eq!(payload["limit"].as_u64(), Some(30));
         assert_eq!(payload["offset"].as_u64(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn live_playlist_list_request() {
+        let client = crate::NeteaseClient::new();
+        let response = client
+            .weapi_request(PlaylistListRequest::new(5, 0))
+            .await
+            .expect("playlist list request failed");
+
+        assert_eq!(response.code, 200);
+        assert!(!response.playlists.is_empty());
     }
 }

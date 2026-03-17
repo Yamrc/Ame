@@ -1,12 +1,13 @@
 use ame_netease::NeteaseClient;
 use ame_netease::api::album::new::AlbumNewRequest;
 use ame_netease::api::artist::toplist::ToplistArtistRequest;
+use ame_netease::api::common::models::{AlbumDto, ArtistDto, PlaylistDto, TrackDto};
 use ame_netease::api::playlist::detail::PlaylistDetailRequest;
 use ame_netease::api::playlist::list::PlaylistListRequest;
 use ame_netease::api::playlist::personalized::PersonalizedPlaylistRequest;
 use ame_netease::api::playlist::recommend_resource::RecommendResourceRequest;
 use ame_netease::api::playlist::recommend_songs::RecommendSongsRequest;
-use ame_netease::api::playlist::toplist::ToplistRequest;
+use ame_netease::api::playlist::toplist::{ToplistEntryDto, ToplistRequest};
 use ame_netease::api::radio::personal_fm::PersonalFmRequest;
 use ame_netease::api::track::detail::TrackDetailRequest;
 use ame_netease::api::track::lyric::TrackLyricRequest;
@@ -14,7 +15,6 @@ use ame_netease::api::user::playlist::UserPlaylistRequest;
 use anyhow::{Context as _, Result};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::action::runtime::block_on;
@@ -113,18 +113,14 @@ fn compact_cover_url(raw: Option<&str>, size: u32) -> Option<String> {
     Some(format!("{raw}{separator}param={size}y{size}"))
 }
 
-fn parse_artist_names(value: &Value) -> String {
-    let artists = value["ar"]
-        .as_array()
-        .or_else(|| value["artists"].as_array())
-        .map(|artists| {
-            artists
-                .iter()
-                .filter_map(|artist| artist["name"].as_str())
-                .collect::<Vec<_>>()
-                .join(" / ")
-        })
-        .unwrap_or_default();
+fn parse_artist_names(artists: &[ArtistDto]) -> String {
+    let artists = artists
+        .iter()
+        .filter_map(|artist| artist.name.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect::<Vec<_>>()
+        .join(" / ");
     if artists.is_empty() {
         "未知艺人".to_string()
     } else {
@@ -132,220 +128,244 @@ fn parse_artist_names(value: &Value) -> String {
     }
 }
 
-fn parse_track_alias(value: &Value) -> Option<String> {
-    for key in ["tns", "transNames", "alia"] {
-        let alias = value[key]
-            .as_array()
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::trim)
-                    .filter(|item| !item.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" / ")
-            })
-            .filter(|alias| !alias.is_empty());
-        if alias.is_some() {
-            return alias;
-        }
-    }
-    None
+fn parse_track_alias(track: &TrackDto) -> Option<String> {
+    let alias = track
+        .tns
+        .iter()
+        .chain(track.trans_names.iter())
+        .chain(track.alia.iter())
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>()
+        .join(" / ");
+    (!alias.is_empty()).then_some(alias)
 }
 
-fn parse_track_item(value: &Value) -> Option<PlaylistTrackItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("未知歌曲").to_string();
-    let alias = parse_track_alias(value);
-    let artists = parse_artist_names(value);
-    let album = value["al"]["name"]
-        .as_str()
-        .or_else(|| value["album"]["name"].as_str())
-        .map(str::to_string)
+fn parse_track_item(track: &TrackDto) -> Option<PlaylistTrackItem> {
+    if track.id <= 0 {
+        return None;
+    }
+    let alias = parse_track_alias(track);
+    let artists = parse_artist_names(&track.artists);
+    let album = track
+        .album
+        .name
+        .clone()
         .filter(|value| !value.trim().is_empty());
-    let duration_ms = value["dt"]
-        .as_u64()
-        .or_else(|| value["duration"].as_u64());
     let cover_url = compact_cover_url(
-        value["al"]["picUrl"]
-            .as_str()
-            .or_else(|| value["album"]["picUrl"].as_str())
-            .or_else(|| value["picUrl"].as_str()),
+        track.album.pic_url.as_deref().or(track.pic_url.as_deref()),
         256,
     );
     Some(PlaylistTrackItem {
-        id,
-        name,
+        id: track.id,
+        name: if track
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            "未知歌曲".to_string()
+        } else {
+            track.name.clone().unwrap_or_default()
+        },
         alias,
         artists,
         album,
-        duration_ms,
+        duration_ms: track.duration_ms,
         cover_url,
     })
 }
 
-fn parse_playlist_item(value: &Value, cover_size: u32) -> Option<LibraryPlaylistItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("").to_string();
-    let track_count = value["trackCount"]
-        .as_u64()
-        .or_else(|| value["track_count"].as_u64())
-        .and_then(|value| u32::try_from(value).ok())
-        .unwrap_or_default();
-    let creator_name = value["creator"]["nickname"]
-        .as_str()
-        .or_else(|| value["creatorName"].as_str())
-        .or_else(|| value["creator"]["name"].as_str())
-        .unwrap_or("网易云音乐")
-        .to_string();
-    let creator_id = value["creator"]["userId"]
-        .as_i64()
-        .or_else(|| value["creatorId"].as_i64());
-    let subscribed = value["subscribed"].as_bool().unwrap_or(false);
-    let special_type = value["specialType"].as_i64().unwrap_or(0);
-    let cover_url = compact_cover_url(
-        value["coverImgUrl"]
-            .as_str()
-            .or_else(|| value["picUrl"].as_str()),
-        cover_size,
-    );
+fn parse_playlist_item(playlist: &PlaylistDto, cover_size: u32) -> Option<LibraryPlaylistItem> {
+    if playlist.id <= 0 {
+        return None;
+    }
+    let creator_name = playlist
+        .creator
+        .as_ref()
+        .and_then(|creator| creator.name.as_deref())
+        .map(str::trim)
+        .map(ToString::to_string)
+        .and_then(|name| {
+            name.split_once('\0')
+                .map(|(name, _)| name.to_string())
+                .or(Some(name))
+        })
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            playlist
+                .creator_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "网易云音乐".to_string());
+    let cover_url = compact_cover_url(playlist.cover_img_url.as_deref(), cover_size);
     Some(LibraryPlaylistItem {
-        id,
-        name,
-        track_count,
+        id: playlist.id,
+        name: playlist.name.clone().unwrap_or_default(),
+        track_count: u32::try_from(playlist.track_count.unwrap_or_default())
+            .ok()
+            .unwrap_or_default(),
         creator_name,
         cover_url,
-        creator_id,
-        subscribed,
-        special_type,
+        creator_id: playlist
+            .creator
+            .as_ref()
+            .and_then(|creator| creator.user_id)
+            .or(playlist.creator_id),
+        subscribed: playlist.subscribed.unwrap_or(false),
+        special_type: playlist.special_type.unwrap_or_default(),
     })
 }
 
-fn parse_fm_track_item(value: &Value) -> Option<FmTrackItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("未知歌曲").to_string();
-    let alias = parse_track_alias(value);
-    let artists = parse_artist_names(value);
-    let album = value["album"]["name"]
-        .as_str()
-        .or_else(|| value["al"]["name"].as_str())
-        .map(str::to_string)
+fn parse_fm_track_item(track: &TrackDto) -> Option<FmTrackItem> {
+    if track.id <= 0 {
+        return None;
+    }
+    let alias = parse_track_alias(track);
+    let artists = parse_artist_names(&track.artists);
+    let album = track
+        .album
+        .name
+        .clone()
         .filter(|value| !value.trim().is_empty());
-    let duration_ms = value["dt"]
-        .as_u64()
-        .or_else(|| value["duration"].as_u64());
-    let cover_url = compact_cover_url(
-        value["album"]["picUrl"]
-            .as_str()
-            .or_else(|| value["al"]["picUrl"].as_str()),
-        256,
-    );
+    let cover_url = compact_cover_url(track.album.pic_url.as_deref(), 256);
     Some(FmTrackItem {
-        id,
-        name,
+        id: track.id,
+        name: if track
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            "未知歌曲".to_string()
+        } else {
+            track.name.clone().unwrap_or_default()
+        },
         alias,
         artists,
         album,
-        duration_ms,
+        duration_ms: track.duration_ms,
         cover_url,
     })
 }
 
-fn parse_daily_track_item(value: &Value) -> Option<DailyTrackItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("未知歌曲").to_string();
-    let alias = parse_track_alias(value);
-    let artists = parse_artist_names(value);
-    let album = value["al"]["name"]
-        .as_str()
-        .or_else(|| value["album"]["name"].as_str())
-        .map(str::to_string)
+fn parse_daily_track_item(track: &TrackDto) -> Option<DailyTrackItem> {
+    if track.id <= 0 {
+        return None;
+    }
+    let alias = parse_track_alias(track);
+    let artists = parse_artist_names(&track.artists);
+    let album = track
+        .album
+        .name
+        .clone()
         .filter(|value| !value.trim().is_empty());
-    let duration_ms = value["dt"]
-        .as_u64()
-        .or_else(|| value["duration"].as_u64());
     let cover_url = compact_cover_url(
-        value["al"]["picUrl"]
-            .as_str()
-            .or_else(|| value["album"]["picUrl"].as_str())
-            .or_else(|| value["picUrl"].as_str()),
+        track.album.pic_url.as_deref().or(track.pic_url.as_deref()),
         256,
     );
     Some(DailyTrackItem {
-        id,
-        name,
+        id: track.id,
+        name: if track
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            "未知歌曲".to_string()
+        } else {
+            track.name.clone().unwrap_or_default()
+        },
         alias,
         artists,
         album,
-        duration_ms,
+        duration_ms: track.duration_ms,
         cover_url,
     })
 }
 
-fn parse_artist_item(value: &Value) -> Option<ArtistItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("未知艺人").to_string();
-    let cover_url = compact_cover_url(value["picUrl"].as_str(), 256);
+fn parse_artist_item(artist: &ArtistDto) -> Option<ArtistItem> {
+    if artist.id <= 0 {
+        return None;
+    }
+    let cover_url = compact_cover_url(artist.pic_url.as_deref(), 256);
     Some(ArtistItem {
-        id,
-        name,
+        id: artist.id,
+        name: if artist
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            "未知艺人".to_string()
+        } else {
+            artist.name.clone().unwrap_or_default()
+        },
         cover_url,
     })
 }
 
-fn parse_album_item(value: &Value) -> Option<AlbumItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("未知专辑").to_string();
-    let artist_name = value["artist"]["name"]
-        .as_str()
-        .or_else(|| {
-            value["artists"]
-                .as_array()
-                .and_then(|artists| artists.first())
-                .and_then(|artist| artist["name"].as_str())
+fn parse_album_item(album: &AlbumDto) -> Option<AlbumItem> {
+    if album.id <= 0 {
+        return None;
+    }
+    let artist_name = album
+        .artist
+        .as_ref()
+        .and_then(|artist| artist.name.as_deref())
+        .map(str::trim)
+        .map(ToString::to_string)
+        .and_then(|name| {
+            name.split_once('\0')
+                .map(|(name, _)| name.to_string())
+                .or(Some(name))
         })
-        .unwrap_or("未知艺人")
-        .to_string();
-    let cover_url = compact_cover_url(
-        value["picUrl"]
-            .as_str()
-            .or_else(|| value["coverImgUrl"].as_str()),
-        256,
-    );
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            album
+                .artists
+                .first()
+                .and_then(|artist| artist.name.as_deref())
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "未知艺人".to_string());
+    let cover_url = compact_cover_url(album.pic_url.as_deref(), 256);
     Some(AlbumItem {
-        id,
-        name,
+        id: album.id,
+        name: if album
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            "未知专辑".to_string()
+        } else {
+            album.name.clone().unwrap_or_default()
+        },
         artist_name,
         cover_url,
     })
 }
 
-fn parse_toplist_item(value: &Value) -> Option<ToplistItem> {
-    let id = value["id"].as_i64()?;
-    let name = value["name"].as_str().unwrap_or("未知榜单").to_string();
-    let update_frequency = value["updateFrequency"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string();
-    let cover_url = compact_cover_url(value["coverImgUrl"].as_str(), 256);
+fn parse_toplist_item(playlist: &ToplistEntryDto) -> Option<ToplistItem> {
+    if playlist.id <= 0 {
+        return None;
+    }
+    let cover_url = compact_cover_url(playlist.cover_img_url.as_deref(), 256);
     Some(ToplistItem {
-        id,
-        name,
-        update_frequency,
+        id: playlist.id,
+        name: if playlist
+            .name
+            .as_deref()
+            .is_none_or(|name| name.trim().is_empty())
+        {
+            "未知榜单".to_string()
+        } else {
+            playlist.name.clone().unwrap_or_default()
+        },
+        update_frequency: playlist.update_frequency.clone().unwrap_or_default(),
         cover_url,
     })
-}
-
-fn parse_playlist_track_ids(playlist: &Value) -> Vec<i64> {
-    playlist["trackIds"]
-        .as_array()
-        .map(|track_ids| {
-            track_ids
-                .iter()
-                .filter_map(|item| item["id"].as_i64())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
 }
 
 fn fetch_tracks_by_ids_blocking(track_ids: &[i64], cookie: &str) -> Result<Vec<PlaylistTrackItem>> {
@@ -363,10 +383,10 @@ fn fetch_tracks_by_ids_blocking(track_ids: &[i64], cookie: &str) -> Result<Vec<P
         let mut by_id = HashMap::with_capacity(ids.len());
 
         for chunk in ids.chunks(TRACK_DETAIL_BATCH_SIZE) {
-            let response: Value = client
-                .weapi_request(TrackDetailRequest::new(chunk.to_vec()))
+            let response = client
+                .eapi_request(TrackDetailRequest::new(chunk.to_vec()))
                 .await?;
-            for song in response["songs"].as_array().into_iter().flatten() {
+            for song in &response.songs {
                 if let Some(track) = parse_track_item(song) {
                     by_id.entry(track.id).or_insert(track);
                 }
@@ -387,13 +407,12 @@ pub fn fetch_user_playlists_blocking(
     cookie: &str,
 ) -> Result<Vec<LibraryPlaylistItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(UserPlaylistRequest::new(user_id)))?;
-    let playlists = response["playlist"].as_array().cloned().unwrap_or_default();
+    let response = block_on(client.weapi_request(UserPlaylistRequest::new(user_id)))?;
 
-    Ok(playlists
-        .into_iter()
-        .filter_map(|item| parse_playlist_item(&item, 256))
+    Ok(response
+        .playlists
+        .iter()
+        .filter_map(|item| parse_playlist_item(item, 256))
         .collect())
 }
 
@@ -403,16 +422,12 @@ pub fn fetch_top_playlists_blocking(
     cookie: &str,
 ) -> Result<Vec<LibraryPlaylistItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(PlaylistListRequest::new(limit, offset)))?;
-    let playlists = response["playlists"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let response = block_on(client.weapi_request(PlaylistListRequest::new(limit, offset)))?;
 
-    Ok(playlists
-        .into_iter()
-        .filter_map(|item| parse_playlist_item(&item, 1024))
+    Ok(response
+        .playlists
+        .iter()
+        .filter_map(|item| parse_playlist_item(item, 1024))
         .collect())
 }
 
@@ -421,50 +436,39 @@ pub fn fetch_personalized_playlists_blocking(
     cookie: &str,
 ) -> Result<Vec<LibraryPlaylistItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(PersonalizedPlaylistRequest::new(limit)))?;
-    let playlists = response["result"].as_array().cloned().unwrap_or_default();
-    Ok(playlists
-        .into_iter()
-        .filter_map(|item| parse_playlist_item(&item, 256))
+    let response = block_on(client.weapi_request(PersonalizedPlaylistRequest::new(limit)))?;
+    Ok(response
+        .result
+        .iter()
+        .filter_map(|item| parse_playlist_item(item, 256))
         .collect())
 }
 
 pub fn fetch_daily_recommend_playlists_blocking(cookie: &str) -> Result<Vec<LibraryPlaylistItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(RecommendResourceRequest::new()))?;
-    let playlists = response["recommend"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    Ok(playlists
-        .into_iter()
-        .filter_map(|item| parse_playlist_item(&item, 256))
+    let response = block_on(client.weapi_request(RecommendResourceRequest::new()))?;
+    Ok(response
+        .playlists
+        .iter()
+        .filter_map(|item| parse_playlist_item(item, 256))
         .collect())
 }
 
 pub fn fetch_daily_recommend_tracks_blocking(cookie: &str) -> Result<Vec<DailyTrackItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value = block_on(client.weapi_request(RecommendSongsRequest::new()))?;
-    let tracks = response["data"]["dailySongs"]
-        .as_array()
-        .or_else(|| response["dailySongs"].as_array())
-        .cloned()
-        .unwrap_or_default();
-    Ok(tracks
-        .into_iter()
-        .filter_map(|track| parse_daily_track_item(&track))
-        .collect())
+    let response = block_on(client.weapi_request(RecommendSongsRequest::new()))?;
+    let tracks = if response.data.daily_songs.is_empty() {
+        &response.daily_songs
+    } else {
+        &response.data.daily_songs
+    };
+    Ok(tracks.iter().filter_map(parse_daily_track_item).collect())
 }
 
 pub fn fetch_personal_fm_blocking(cookie: &str) -> Result<Option<FmTrackItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value = block_on(client.weapi_request(PersonalFmRequest::new()))?;
-    let tracks = response["data"].as_array().cloned().unwrap_or_default();
-    Ok(tracks
-        .into_iter()
-        .find_map(|track| parse_fm_track_item(&track)))
+    let response = block_on(client.weapi_request(PersonalFmRequest::new()))?;
+    Ok(response.data.iter().find_map(parse_fm_track_item))
 }
 
 pub fn fetch_recommend_artists_blocking(
@@ -474,31 +478,26 @@ pub fn fetch_recommend_artists_blocking(
 ) -> Result<Vec<ArtistItem>> {
     let client = NeteaseClient::with_cookie(cookie);
     let pool = limit.max(60);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(ToplistArtistRequest::new(artist_type, pool, 0)))?;
-    let artists = response["list"]["artists"]
-        .as_array()
-        .or_else(|| response["artists"].as_array())
-        .cloned()
-        .unwrap_or_default();
-    let mut items = artists
-        .into_iter()
-        .filter_map(|artist| parse_artist_item(&artist))
+    let response = block_on(client.weapi_request(ToplistArtistRequest::new(artist_type, pool, 0)))?;
+    let mut items = response
+        .list
+        .artists
+        .iter()
+        .chain(response.artists.iter())
+        .filter_map(parse_artist_item)
         .collect::<Vec<_>>();
 
     let target = limit as usize;
     if items.len() < target {
         let offset = items.len() as u32;
-        let response: serde_json::Value =
+        let response =
             block_on(client.weapi_request(ToplistArtistRequest::new(artist_type, pool, offset)))?;
-        let more = response["list"]["artists"]
-            .as_array()
-            .or_else(|| response["artists"].as_array())
-            .cloned()
-            .unwrap_or_default();
-        for artist in more
-            .into_iter()
-            .filter_map(|artist| parse_artist_item(&artist))
+        for artist in response
+            .list
+            .artists
+            .iter()
+            .chain(response.artists.iter())
+            .filter_map(parse_artist_item)
         {
             if items.iter().any(|existing| existing.id == artist.id) {
                 continue;
@@ -539,22 +538,21 @@ pub fn fetch_new_albums_blocking(
     cookie: &str,
 ) -> Result<Vec<AlbumItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(AlbumNewRequest::new(limit, offset, area)))?;
-    let albums = response["albums"].as_array().cloned().unwrap_or_default();
-    Ok(albums
-        .into_iter()
-        .filter_map(|album| parse_album_item(&album))
+    let response = block_on(client.weapi_request(AlbumNewRequest::new(limit, offset, area)))?;
+    Ok(response
+        .albums
+        .iter()
+        .filter_map(parse_album_item)
         .collect())
 }
 
 pub fn fetch_toplists_blocking(cookie: &str) -> Result<Vec<ToplistItem>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value = block_on(client.eapi_request(ToplistRequest::new()))?;
-    let lists = response["list"].as_array().cloned().unwrap_or_default();
-    Ok(lists
-        .into_iter()
-        .filter_map(|item| parse_toplist_item(&item))
+    let response = block_on(client.eapi_request(ToplistRequest::new()))?;
+    Ok(response
+        .list
+        .iter()
+        .filter_map(parse_toplist_item)
         .collect())
 }
 
@@ -563,31 +561,38 @@ pub fn fetch_playlist_detail_blocking(
     cookie: &str,
 ) -> Result<PlaylistDetailData> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: serde_json::Value =
-        block_on(client.weapi_request(PlaylistDetailRequest::new(playlist_id)))?;
-    let playlist = &response["playlist"];
+    let response = block_on(client.weapi_request(PlaylistDetailRequest::new(playlist_id)))?;
+    let playlist = response.playlist;
 
-    let id = playlist["id"]
-        .as_i64()
-        .context("playlist detail missing id")?;
-    let name = playlist["name"].as_str().unwrap_or("未知歌单").to_string();
-    let creator_name = playlist["creator"]["nickname"]
-        .as_str()
-        .unwrap_or("未知用户")
-        .to_string();
-    let track_count = playlist["trackCount"]
-        .as_u64()
-        .and_then(|value| u32::try_from(value).ok())
-        .unwrap_or_default();
-    let partial_tracks = playlist["tracks"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|track| parse_track_item(&track))
+    let id = playlist.id;
+    anyhow::ensure!(id > 0, "playlist detail missing id");
+    let name = if playlist.name.trim().is_empty() {
+        "未知歌单".to_string()
+    } else {
+        playlist.name.clone()
+    };
+    let creator_name = if playlist
+        .creator
+        .name
+        .as_deref()
+        .is_none_or(|name| name.trim().is_empty())
+    {
+        "未知用户".to_string()
+    } else {
+        playlist.creator.name.clone().unwrap_or_default()
+    };
+    let track_count = u32::try_from(playlist.track_count).ok().unwrap_or_default();
+    let partial_tracks = playlist
+        .tracks
+        .iter()
+        .filter_map(parse_track_item)
         .collect::<Vec<_>>();
 
-    let track_ids = parse_playlist_track_ids(playlist);
+    let track_ids = playlist
+        .track_ids
+        .iter()
+        .map(|track| track.id)
+        .collect::<Vec<_>>();
     let tracks = if track_ids.is_empty() {
         partial_tracks
     } else {
@@ -621,8 +626,8 @@ pub fn fetch_playlist_detail_blocking(
 
 pub fn fetch_track_lyric_preview_blocking(track_id: i64, cookie: &str) -> Result<Vec<String>> {
     let client = NeteaseClient::with_cookie(cookie);
-    let response: Value = block_on(client.weapi_request(TrackLyricRequest::new(track_id)))?;
-    let raw = response["lrc"]["lyric"].as_str().unwrap_or_default();
+    let response = block_on(client.weapi_request(TrackLyricRequest::new(track_id)))?;
+    let raw = response.main_lyric().unwrap_or_default();
     let mut lines = parse_lyric_lines(raw);
     if lines.is_empty() {
         return Ok(Vec::new());

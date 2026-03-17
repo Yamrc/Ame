@@ -28,3 +28,9 @@ impl AppEntity {
         self.search_query = query.into();
     }
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct ShellState {
+    pub error: Option<String>,
+    pub close_behavior: CloseBehavior,
+}

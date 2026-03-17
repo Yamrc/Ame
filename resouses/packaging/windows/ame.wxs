@@ -24,6 +24,7 @@
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="ADD_START_MENU_SHORTCUT" Value="1" />
     <Property Id="REMOVE_APPDATA" Value="1" />
+    <Property Id="APPDATADIR" Value="[AppDataFolder]Ame" />
     <UIRef Id="WixUI_InstallDir" />
     <UIRef Id="WixUI_Common" />
 
@@ -88,19 +89,17 @@
         </Directory>
       </Directory>
       <Directory Id="AppDataFolder">
-        <Directory Id="APPDATADIR" Name="Ame">
-          <Component Id="cmpAppDataCleanup" Guid="*" Win64="yes">
-            <Condition>REMOVE_APPDATA=1</Condition>
-            <RegistryValue
-              Root="HKCU"
-              Key="Software\NeoNekos\Ame"
-              Name="AppDataDir"
-              Type="string"
-              Value="[APPDATADIR]"
-              KeyPath="yes" />
-            <util:RemoveFolderEx Id="RemoveAppData" On="uninstall" Property="APPDATADIR" />
-          </Component>
-        </Directory>
+        <Component Id="cmpAppDataCleanup" Guid="*" Win64="yes">
+          <Condition>REMOVE_APPDATA=1</Condition>
+          <RegistryValue
+            Root="HKCU"
+            Key="Software\NeoNekos\Ame"
+            Name="AppDataDir"
+            Type="string"
+            Value="[APPDATADIR]"
+            KeyPath="yes" />
+          <util:RemoveFolderEx Id="RemoveAppData" On="uninstall" Property="APPDATADIR" />
+        </Component>
       </Directory>
     </Directory>
 

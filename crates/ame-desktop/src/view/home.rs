@@ -1,8 +1,17 @@
+use std::sync::Arc;
+
 use nekowg::{
-    AnyElement, App, FontWeight, MouseButton, ObjectFit, TextAlign, div, img, linear_color_stop,
-    linear_gradient, prelude::*, px, relative, rgb, rgba,
+    AnyElement, App, Context, Entity, FontWeight, MouseButton, ObjectFit, Render, Subscription,
+    TextAlign, Window, div, img, linear_color_stop, linear_gradient, prelude::*, px, relative, rgb,
+    rgba,
 };
 
+use crate::action::library_actions;
+use crate::entity::pages::DataState;
+use crate::entity::player_controller::{PlayerController, QueueTrackInput};
+use crate::entity::runtime::AppRuntime;
+use crate::entity::services::{auth, pages};
+use crate::router::{self, RouterState};
 use crate::view::common;
 use crate::{
     component::{
@@ -13,12 +22,140 @@ use crate::{
     util::url::image_resize_url,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HomeSessionKey {
+    user_id: Option<i64>,
+    has_user_token: bool,
+    has_guest_token: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HomePlaylistCard {
     pub id: i64,
     pub name: String,
     pub subtitle: String,
     pub cover_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HomeArtistCard {
+    pub name: String,
+    pub cover_url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HomePageSnapshot {
+    pub loading: bool,
+    pub error: Option<String>,
+    pub daily_card: HomePlaylistCard,
+    pub daily_first_track_id: Option<i64>,
+    pub fm_card: HomePlaylistCard,
+    pub fm_track: Option<library_actions::FmTrackItem>,
+    pub playlists: Vec<HomePlaylistCard>,
+    pub artists: Vec<HomeArtistCard>,
+    pub albums: Vec<HomePlaylistCard>,
+    pub toplists: Vec<HomePlaylistCard>,
+}
+
+impl HomePageSnapshot {
+    pub fn from_states(
+        recommend_playlists: &DataState<Vec<library_actions::LibraryPlaylistItem>>,
+        recommend_artists: &DataState<Vec<library_actions::ArtistItem>>,
+        new_albums: &DataState<Vec<library_actions::AlbumItem>>,
+        toplists: &DataState<Vec<library_actions::ToplistItem>>,
+        daily_tracks: &DataState<Vec<library_actions::DailyTrackItem>>,
+        personal_fm: &DataState<Option<library_actions::FmTrackItem>>,
+    ) -> Self {
+        let loading = recommend_playlists.loading
+            || recommend_artists.loading
+            || new_albums.loading
+            || toplists.loading
+            || daily_tracks.loading
+            || personal_fm.loading;
+        let error = recommend_playlists
+            .error
+            .clone()
+            .or(recommend_artists.error.clone())
+            .or(new_albums.error.clone())
+            .or(toplists.error.clone())
+            .or(daily_tracks.error.clone())
+            .or(personal_fm.error.clone());
+        let daily_card = HomePlaylistCard {
+            id: 0,
+            name: "每日推荐".to_string(),
+            subtitle: "根据你的口味更新".to_string(),
+            cover_url: daily_tracks
+                .data
+                .first()
+                .and_then(|track| track.cover_url.clone()),
+        };
+        let fm_card = personal_fm
+            .data
+            .as_ref()
+            .map(|track| HomePlaylistCard {
+                id: track.id,
+                name: track.name.clone(),
+                subtitle: track.artists.clone(),
+                cover_url: track.cover_url.clone(),
+            })
+            .unwrap_or(HomePlaylistCard {
+                id: 0,
+                name: "私人 FM".to_string(),
+                subtitle: "连续播放你可能喜欢的音乐".to_string(),
+                cover_url: None,
+            });
+
+        Self {
+            loading,
+            error,
+            daily_card,
+            daily_first_track_id: daily_tracks.data.first().map(|track| track.id),
+            fm_card,
+            fm_track: personal_fm.data.clone(),
+            playlists: recommend_playlists
+                .data
+                .iter()
+                .take(10)
+                .map(|item| HomePlaylistCard {
+                    id: item.id,
+                    name: item.name.clone(),
+                    subtitle: item.creator_name.clone(),
+                    cover_url: item.cover_url.clone(),
+                })
+                .collect(),
+            artists: recommend_artists
+                .data
+                .iter()
+                .take(6)
+                .map(|artist| HomeArtistCard {
+                    name: artist.name.clone(),
+                    cover_url: artist.cover_url.clone(),
+                })
+                .collect(),
+            albums: new_albums
+                .data
+                .iter()
+                .take(10)
+                .map(|album| HomePlaylistCard {
+                    id: album.id,
+                    name: album.name.clone(),
+                    subtitle: album.artist_name.clone(),
+                    cover_url: album.cover_url.clone(),
+                })
+                .collect(),
+            toplists: toplists
+                .data
+                .iter()
+                .take(10)
+                .map(|list| HomePlaylistCard {
+                    id: list.id,
+                    name: list.name.clone(),
+                    subtitle: list.update_frequency.clone(),
+                    cover_url: list.cover_url.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 pub fn daily_featured_card(
@@ -367,100 +504,6 @@ pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'stati
         .into_any_element()
 }
 
-pub fn render(
-    loading: bool,
-    error: Option<&str>,
-    featured_rows: Vec<AnyElement>,
-    playlist_rows: Vec<AnyElement>,
-    artist_rows: Vec<AnyElement>,
-    album_rows: Vec<AnyElement>,
-    toplist_rows: Vec<AnyElement>,
-) -> AnyElement {
-    let status = common::status_banner(loading, error, "加载中...", "加载失败");
-
-    let featured = if featured_rows.is_empty() {
-        div()
-            .w_full()
-            .rounded_lg()
-            .bg(rgb(theme::COLOR_CARD_DARK))
-            .px_4()
-            .py_3()
-            .text_color(rgb(theme::COLOR_SECONDARY))
-            .child("暂无推荐")
-            .into_any_element()
-    } else {
-        featured_rows
-            .into_iter()
-            .fold(
-                div().w_full().grid().grid_cols(2).gap(px(20.)),
-                |col, item| col.child(item),
-            )
-            .into_any_element()
-    };
-
-    let playlists = grid_section(playlist_rows, "暂无推荐歌单", 5);
-    let artists = grid_section(artist_rows, "暂无推荐艺人", 6);
-    let albums = grid_section(album_rows, "暂无新碟", 5);
-    let toplists = grid_section(toplist_rows, "暂无榜单", 5);
-
-    div()
-        .w_full()
-        .flex()
-        .flex_col()
-        .pt(px(28.))
-        .child(div().w_full().mt(px(12.)).child(status))
-        .child(
-            div()
-                .w_full()
-                .mb(px(22.))
-                .text_size(px(26.))
-                .font_weight(FontWeight::BOLD)
-                .child("For You"),
-        )
-        .child(featured)
-        .child(
-            div()
-                .w_full()
-                .mt(px(36.))
-                .mb(px(14.))
-                .text_size(px(26.))
-                .font_weight(FontWeight::BOLD)
-                .child("推荐歌单"),
-        )
-        .child(playlists)
-        .child(
-            div()
-                .w_full()
-                .mt(px(40.))
-                .mb(px(14.))
-                .text_size(px(26.))
-                .font_weight(FontWeight::BOLD)
-                .child("推荐艺人"),
-        )
-        .child(artists)
-        .child(
-            div()
-                .w_full()
-                .mt(px(40.))
-                .mb(px(14.))
-                .text_size(px(26.))
-                .font_weight(FontWeight::BOLD)
-                .child("新碟上架"),
-        )
-        .child(albums)
-        .child(
-            div()
-                .w_full()
-                .mt(px(40.))
-                .mb(px(14.))
-                .text_size(px(26.))
-                .font_weight(FontWeight::BOLD)
-                .child("榜单"),
-        )
-        .child(toplists)
-        .into_any_element()
-}
-
 fn grid_section(rows: Vec<AnyElement>, empty_label: &'static str, columns: usize) -> AnyElement {
     if rows.is_empty() {
         div()
@@ -478,6 +521,424 @@ fn grid_section(rows: Vec<AnyElement>, empty_label: &'static str, columns: usize
                 div().w_full().grid().grid_cols(columns as u16).gap(px(18.)),
                 |grid, item| grid.child(item),
             )
+            .into_any_element()
+    }
+}
+
+pub struct HomePageView {
+    runtime: AppRuntime,
+    player_controller: Entity<PlayerController>,
+    observed_session_key: HomeSessionKey,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl HomePageView {
+    pub fn new(
+        runtime: AppRuntime,
+        player_controller: Entity<PlayerController>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut subscriptions = Vec::new();
+        subscriptions.push(cx.observe_global::<RouterState>(|this, cx| {
+            if this.is_active(cx) {
+                this.ensure_loaded(cx);
+            }
+        }));
+        subscriptions.push(cx.observe(&runtime.session, |this, _, cx| {
+            this.handle_session_change(cx);
+        }));
+        let observed_session_key = session_key(&runtime, cx);
+        let mut this = Self {
+            runtime,
+            player_controller,
+            observed_session_key,
+            _subscriptions: subscriptions,
+        };
+        if this.is_active(cx) {
+            this.ensure_loaded(cx);
+        }
+        this
+    }
+
+    fn is_active(&self, cx: &mut Context<Self>) -> bool {
+        router::current_path(cx).as_ref() == "/"
+    }
+
+    fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
+        self.load(false, cx);
+    }
+
+    fn reload(&mut self, cx: &mut Context<Self>) {
+        self.load(true, cx);
+    }
+
+    fn handle_session_change(&mut self, cx: &mut Context<Self>) {
+        let key = session_key(&self.runtime, cx);
+        let changed = self.observed_session_key != key;
+        self.observed_session_key = key;
+
+        if !self.is_active(cx) {
+            return;
+        }
+
+        if changed {
+            self.reload(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    fn load(&mut self, force: bool, cx: &mut Context<Self>) {
+        let session = self.runtime.session.read(cx).clone();
+        let key = session_key_from_session(&session);
+        if !key.has_guest_token {
+            return;
+        }
+
+        let source = if key.has_user_token {
+            crate::entity::pages::DataSource::User
+        } else {
+            crate::entity::pages::DataSource::Guest
+        };
+        let home = self.runtime.home.read(cx).clone();
+        if !force {
+            if home.recommend_playlists.loading {
+                return;
+            }
+            if home.recommend_playlists.source == source
+                && home.recommend_playlists.fetched_at_ms.is_some()
+            {
+                return;
+            }
+        }
+
+        let Some(cookie) = crate::action::auth_actions::build_cookie_header(&session.auth_bundle)
+        else {
+            return;
+        };
+
+        self.runtime.home.update(cx, |home, cx| {
+            home.recommend_playlists.begin(source);
+            home.recommend_artists.begin(source);
+            home.new_albums.begin(source);
+            home.toplists.begin(source);
+            if key.has_user_token {
+                home.daily_tracks
+                    .begin(crate::entity::pages::DataSource::User);
+                home.personal_fm
+                    .begin(crate::entity::pages::DataSource::User);
+            } else {
+                home.daily_tracks.clear();
+                home.personal_fm.clear();
+            }
+            cx.notify();
+        });
+
+        let page = cx.entity();
+        cx.spawn(async move |_, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { pages::fetch_home_payload(&cookie, key.has_user_token) })
+                .await;
+            page.update(cx, |this, cx| this.apply_home_load(key, result, cx));
+        })
+        .detach();
+    }
+
+    fn apply_home_load(
+        &mut self,
+        key: HomeSessionKey,
+        result: Result<pages::HomeLoadResult, String>,
+        cx: &mut Context<Self>,
+    ) {
+        if session_key(&self.runtime, cx) != key {
+            return;
+        }
+
+        self.runtime.home.update(cx, |home, cx| {
+            match result {
+                Ok(result) => {
+                    home.recommend_playlists
+                        .succeed(result.recommend_playlists, Some(result.fetched_at_ms));
+                    home.recommend_artists
+                        .succeed(result.recommend_artists, Some(result.fetched_at_ms));
+                    home.new_albums
+                        .succeed(result.new_albums, Some(result.fetched_at_ms));
+                    home.toplists
+                        .succeed(result.toplists, Some(result.fetched_at_ms));
+                    if key.has_user_token {
+                        home.daily_tracks
+                            .succeed(result.daily_tracks, Some(result.fetched_at_ms));
+                        home.personal_fm
+                            .succeed(result.personal_fm, Some(result.fetched_at_ms));
+                    } else {
+                        home.daily_tracks.clear();
+                        home.personal_fm.clear();
+                    }
+                }
+                Err(err) => {
+                    home.recommend_playlists.clear();
+                    home.recommend_playlists.fail(err.clone());
+                    home.recommend_artists.clear();
+                    home.recommend_artists.fail(err.clone());
+                    home.new_albums.clear();
+                    home.new_albums.fail(err.clone());
+                    home.toplists.clear();
+                    home.toplists.fail(err.clone());
+                    if key.has_user_token {
+                        home.daily_tracks.clear();
+                        home.daily_tracks.fail(err.clone());
+                        home.personal_fm.clear();
+                        home.personal_fm.fail(err);
+                    } else {
+                        home.daily_tracks.clear();
+                        home.personal_fm.clear();
+                    }
+                }
+            }
+            cx.notify();
+        });
+    }
+
+    fn open_daily(&mut self, cx: &mut Context<Self>) {
+        if auth::has_user_token(&self.runtime, cx) {
+            router::navigate(cx, "/daily/songs");
+        } else {
+            router::navigate(cx, "/login");
+        }
+    }
+
+    fn play_daily(&mut self, track_id: Option<i64>, cx: &mut Context<Self>) {
+        if !auth::has_user_token(&self.runtime, cx) {
+            router::navigate(cx, "/login");
+            return;
+        }
+
+        let tracks = self.runtime.home.read(cx).daily_tracks.data.clone();
+        if tracks.is_empty() {
+            return;
+        }
+        let start_index = track_id
+            .and_then(|track_id| tracks.iter().position(|track| track.id == track_id))
+            .unwrap_or(0);
+        let queue = tracks
+            .into_iter()
+            .map(QueueTrackInput::from)
+            .collect::<Vec<_>>();
+        self.player_controller.update(cx, |player, cx| {
+            player.replace_queue(queue, start_index, cx)
+        });
+    }
+
+    fn open_fm(&mut self, track: Option<library_actions::FmTrackItem>, cx: &mut Context<Self>) {
+        if !auth::has_user_token(&self.runtime, cx) {
+            router::navigate(cx, "/login");
+            return;
+        }
+        if let Some(track) = track {
+            self.player_controller.update(cx, |player, cx| {
+                player.enqueue_track(track.into(), true, cx)
+            });
+        } else {
+            router::navigate(cx, "/library");
+        }
+    }
+}
+
+fn session_key(runtime: &AppRuntime, cx: &Context<HomePageView>) -> HomeSessionKey {
+    runtime
+        .session
+        .read_with(cx, |session, _| session_key_from_session(session))
+}
+
+fn session_key_from_session(session: &crate::entity::session::SessionState) -> HomeSessionKey {
+    HomeSessionKey {
+        user_id: session.auth_user_id,
+        has_user_token: session
+            .auth_bundle
+            .music_u
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        has_guest_token: session
+            .auth_bundle
+            .music_u
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+            || session
+                .auth_bundle
+                .music_a
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+    }
+}
+
+impl Render for HomePageView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let home = self.runtime.home.read(cx).clone();
+        let snapshot = HomePageSnapshot::from_states(
+            &home.recommend_playlists,
+            &home.recommend_artists,
+            &home.new_albums,
+            &home.toplists,
+            &home.daily_tracks,
+            &home.personal_fm,
+        );
+        let page = cx.entity();
+        let on_open_daily = {
+            let page = page.clone();
+            Arc::new(move |cx: &mut App| {
+                page.update(cx, |this, cx| this.open_daily(cx));
+            })
+        };
+        let on_play_daily = {
+            let page = page.clone();
+            Arc::new(move |track_id: Option<i64>, cx: &mut App| {
+                page.update(cx, |this, cx| this.play_daily(track_id, cx));
+            })
+        };
+        let on_open_fm = {
+            let page = page.clone();
+            Arc::new(
+                move |track: Option<library_actions::FmTrackItem>, cx: &mut App| {
+                    page.update(cx, |this, cx| this.open_fm(track.clone(), cx));
+                },
+            )
+        };
+        let on_open_playlist = Arc::new(move |playlist_id: i64, cx: &mut App| {
+            page.update(cx, |_, cx| {
+                router::navigate(cx, format!("/playlist/{playlist_id}"));
+            });
+        });
+
+        let featured_rows = vec![
+            {
+                let on_open_daily = on_open_daily.clone();
+                let on_play_daily = on_play_daily.clone();
+                daily_featured_card(
+                    snapshot.daily_card,
+                    move |cx| on_open_daily(cx),
+                    move |cx| on_play_daily(snapshot.daily_first_track_id, cx),
+                )
+            },
+            {
+                let on_open_fm = on_open_fm.clone();
+                fm_featured_card(snapshot.fm_card, move |cx| {
+                    on_open_fm(snapshot.fm_track.clone(), cx)
+                })
+            },
+        ];
+        let playlist_rows = snapshot
+            .playlists
+            .into_iter()
+            .map(|item| {
+                let playlist_id = item.id;
+                let on_open_playlist = on_open_playlist.clone();
+                playlist_card(item, move |cx| on_open_playlist(playlist_id, cx))
+            })
+            .collect();
+        let artist_rows = snapshot
+            .artists
+            .into_iter()
+            .map(|artist| artist_card(artist.name, artist.cover_url, move |_cx| {}))
+            .collect();
+        let album_rows = snapshot
+            .albums
+            .into_iter()
+            .map(|item| playlist_card(item, move |_cx| {}))
+            .collect();
+        let toplist_rows = snapshot
+            .toplists
+            .into_iter()
+            .map(|item| playlist_card(item, move |_cx| {}))
+            .collect();
+
+        let status = common::status_banner(
+            snapshot.loading,
+            snapshot.error.as_deref(),
+            "加载中...",
+            "加载失败",
+        );
+
+        let featured = if featured_rows.is_empty() {
+            div()
+                .w_full()
+                .rounded_lg()
+                .bg(rgb(theme::COLOR_CARD_DARK))
+                .px_4()
+                .py_3()
+                .text_color(rgb(theme::COLOR_SECONDARY))
+                .child("暂无推荐")
+                .into_any_element()
+        } else {
+            featured_rows
+                .into_iter()
+                .fold(
+                    div().w_full().grid().grid_cols(2).gap(px(20.)),
+                    |col, item| col.child(item),
+                )
+                .into_any_element()
+        };
+
+        let playlists = grid_section(playlist_rows, "暂无推荐歌单", 5);
+        let artists = grid_section(artist_rows, "暂无推荐艺人", 6);
+        let albums = grid_section(album_rows, "暂无新碟", 5);
+        let toplists = grid_section(toplist_rows, "暂无榜单", 5);
+
+        div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .pt(px(28.))
+            .child(div().w_full().mt(px(12.)).child(status))
+            .child(
+                div()
+                    .w_full()
+                    .mb(px(22.))
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .child("For You"),
+            )
+            .child(featured)
+            .child(
+                div()
+                    .w_full()
+                    .mt(px(36.))
+                    .mb(px(14.))
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .child("推荐歌单"),
+            )
+            .child(playlists)
+            .child(
+                div()
+                    .w_full()
+                    .mt(px(40.))
+                    .mb(px(14.))
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .child("推荐艺人"),
+            )
+            .child(artists)
+            .child(
+                div()
+                    .w_full()
+                    .mt(px(40.))
+                    .mb(px(14.))
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .child("新碟上架"),
+            )
+            .child(albums)
+            .child(
+                div()
+                    .w_full()
+                    .mt(px(40.))
+                    .mb(px(14.))
+                    .text_size(px(26.))
+                    .font_weight(FontWeight::BOLD)
+                    .child("榜单"),
+            )
+            .child(toplists)
             .into_any_element()
     }
 }

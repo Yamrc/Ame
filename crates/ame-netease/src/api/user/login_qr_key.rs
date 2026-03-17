@@ -1,11 +1,19 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::api::request::ApiRequest;
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct LoginQrKeyResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub unikey: Option<String>,
+}
+
 pub struct LoginQrKeyRequest;
 
 impl ApiRequest for LoginQrKeyRequest {
-    type Response = Value;
+    type Response = LoginQrKeyResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/login/qrcode/unikey"
@@ -34,12 +42,12 @@ mod tests {
     #[tokio::test]
     async fn live_login_qr_key_request() {
         let client = crate::NeteaseClient::new();
-        let response: serde_json::Value = client
+        let response = client
             .eapi_request(LoginQrKeyRequest)
             .await
             .expect("eapi login_qr_key request failed");
 
-        assert_eq!(response["code"].as_i64(), Some(200));
-        assert!(response["unikey"].as_str().is_some());
+        assert_eq!(response.code, 200);
+        assert!(response.unikey.is_some());
     }
 }

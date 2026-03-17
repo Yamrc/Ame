@@ -1,6 +1,15 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::api::common::models::PlaylistDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RecommendResourceResponse {
+    pub code: i64,
+    #[serde(default, rename = "recommend")]
+    pub playlists: Vec<PlaylistDto>,
+}
 
 pub struct RecommendResourceRequest;
 
@@ -17,7 +26,7 @@ impl Default for RecommendResourceRequest {
 }
 
 impl ApiRequest for RecommendResourceRequest {
-    type Response = Value;
+    type Response = RecommendResourceResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/v1/discovery/recommend/resource"

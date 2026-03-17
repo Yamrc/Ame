@@ -1,11 +1,23 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use md5::{Digest, Md5};
 use rand::RngExt;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::api::request::ApiRequest;
 
 const ID_XOR_KEY_1: &[u8] = b"3go8&$8*3*3h0k(2)2";
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RegisterAnonymousResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub cookie: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub msg: Option<String>,
+}
 
 pub struct RegisterAnonymousRequest {
     pub username: String,
@@ -27,7 +39,7 @@ impl Default for RegisterAnonymousRequest {
 }
 
 impl ApiRequest for RegisterAnonymousRequest {
-    type Response = Value;
+    type Response = RegisterAnonymousResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/register/anonimous"
@@ -84,18 +96,18 @@ mod tests {
         let client = crate::NeteaseClient::with_cookie(
             "os=pc; appver=3.1.28.205001; channel=netease; WEVNSM=1.0.0",
         );
-        let response: serde_json::Value = client
+        let response = client
             .weapi_request(RegisterAnonymousRequest::new())
             .await
             .expect("weapi register_anonymous request failed");
         let set_cookie = client.take_last_set_cookie();
         let has_music_a = set_cookie.iter().any(|value| value.starts_with("MUSIC_A="));
         let has_nmtid = set_cookie.iter().any(|value| value.starts_with("NMTID="));
-        let status_code = response["code"].as_i64();
+        let status_code = response.code;
 
         assert!(
-            status_code == Some(200) || status_code == Some(400) || has_music_a || has_nmtid,
-            "unexpected register anonymous response: {response}, set-cookie: {set_cookie:?}"
+            status_code == 200 || status_code == 400 || has_music_a || has_nmtid,
+            "unexpected register anonymous response: {response:?}, set-cookie: {set_cookie:?}"
         );
     }
 }

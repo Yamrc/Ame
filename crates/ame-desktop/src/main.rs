@@ -8,7 +8,6 @@ mod animation;
 mod component;
 mod entity;
 mod gpui_http;
-mod kernel;
 mod router;
 mod tray;
 mod util;
@@ -108,7 +107,6 @@ fn main() {
         match cx.open_window(options, |window, cx| {
             let root = cx.new(|cx| view::root::RootView::new(window, cx));
             tray::set_main_root(cx, root.downgrade());
-            tray::set_kernel_commands(cx, root.read(cx).kernel_command_sender());
             let weak = root.downgrade();
             window.on_window_should_close(cx, move |window, cx| {
                 let _ = weak.update(cx, |root: &mut view::root::RootView, cx| {

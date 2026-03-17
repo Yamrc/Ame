@@ -1,6 +1,15 @@
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::common::models::TrackDto;
 use crate::api::request::ApiRequest;
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TrackDetailResponse {
+    pub code: i64,
+    #[serde(default)]
+    pub songs: Vec<TrackDto>,
+}
 
 pub struct TrackDetailRequest {
     pub ids: Vec<i64>,
@@ -13,7 +22,7 @@ impl TrackDetailRequest {
 }
 
 impl ApiRequest for TrackDetailRequest {
-    type Response = Value;
+    type Response = TrackDetailResponse;
 
     fn endpoint(&self) -> &'static str {
         "/api/v3/song/detail"
@@ -54,13 +63,12 @@ mod tests {
     async fn live_eapi_song_detail_v3_request() {
         let client = crate::NeteaseClient::new();
         let request = TrackDetailRequest::new(vec![409926, 1384286544]);
-        let response: serde_json::Value = client
+        let response = client
             .eapi_request(request)
             .await
             .expect("eapi song_detail_v3 request failed");
 
-        assert_eq!(response["code"].as_i64(), Some(200));
-
-        // println!("{:?}", response)
+        assert_eq!(response.code, 200);
+        assert!(!response.songs.is_empty());
     }
 }
