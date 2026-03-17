@@ -7,6 +7,7 @@ use nekowg::{
 };
 
 use crate::action::library_actions;
+use crate::entity::app::HomeArtistLanguage;
 use crate::entity::pages::DataState;
 use crate::entity::player_controller::{PlayerController, QueueTrackInput};
 use crate::entity::runtime::AppRuntime;
@@ -529,6 +530,7 @@ pub struct HomePageView {
     runtime: AppRuntime,
     player_controller: Entity<PlayerController>,
     observed_session_key: HomeSessionKey,
+    observed_artist_language: HomeArtistLanguage,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -547,11 +549,16 @@ impl HomePageView {
         subscriptions.push(cx.observe(&runtime.session, |this, _, cx| {
             this.handle_session_change(cx);
         }));
+        subscriptions.push(cx.observe(&runtime.app, |this, _, cx| {
+            this.handle_app_change(cx);
+        }));
         let observed_session_key = session_key(&runtime, cx);
+        let observed_artist_language = runtime.app.read(cx).home_artist_language;
         let mut this = Self {
             runtime,
             player_controller,
             observed_session_key,
+            observed_artist_language,
             _subscriptions: subscriptions,
         };
         if this.is_active(cx) {
@@ -576,6 +583,22 @@ impl HomePageView {
         let key = session_key(&self.runtime, cx);
         let changed = self.observed_session_key != key;
         self.observed_session_key = key;
+
+        if !self.is_active(cx) {
+            return;
+        }
+
+        if changed {
+            self.reload(cx);
+        } else {
+            cx.notify();
+        }
+    }
+
+    fn handle_app_change(&mut self, cx: &mut Context<Self>) {
+        let language = self.runtime.app.read(cx).home_artist_language;
+        let changed = self.observed_artist_language != language;
+        self.observed_artist_language = language;
 
         if !self.is_active(cx) {
             return;
@@ -616,6 +639,7 @@ impl HomePageView {
         else {
             return;
         };
+        let artist_language = self.runtime.app.read(cx).home_artist_language;
 
         self.runtime.home.update(cx, |home, cx| {
             home.recommend_playlists.begin(source);
@@ -638,9 +662,13 @@ impl HomePageView {
         cx.spawn(async move |_, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { pages::fetch_home_payload(&cookie, key.has_user_token) })
+                .spawn(async move {
+                    pages::fetch_home_payload(&cookie, key.has_user_token, artist_language)
+                })
                 .await;
-            page.update(cx, |this, cx| this.apply_home_load(key, result, cx));
+            page.update(cx, |this, cx| {
+                this.apply_home_load(key, artist_language, result, cx)
+            });
         })
         .detach();
     }
@@ -648,10 +676,13 @@ impl HomePageView {
     fn apply_home_load(
         &mut self,
         key: HomeSessionKey,
+        artist_language: HomeArtistLanguage,
         result: Result<pages::HomeLoadResult, String>,
         cx: &mut Context<Self>,
     ) {
-        if session_key(&self.runtime, cx) != key {
+        if session_key(&self.runtime, cx) != key
+            || self.runtime.app.read(cx).home_artist_language != artist_language
+        {
             return;
         }
 

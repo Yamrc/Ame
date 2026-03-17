@@ -6,6 +6,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::action::{library_actions, search_actions};
+use crate::entity::app::HomeArtistLanguage;
 use crate::entity::pages::PlaylistPageState;
 use crate::entity::runtime::AppRuntime;
 use crate::view::{playlist, search};
@@ -13,6 +14,7 @@ use crate::view::{playlist, search};
 use super::auth::{self, AuthLevel};
 
 const PLAYLIST_DETAIL_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+const HOME_TOPLIST_IDS: [i64; 5] = [19723756, 180106, 60198, 3812895, 60131];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CacheEntry<T> {
@@ -106,13 +108,18 @@ pub fn fetch_library_payload(user_id: i64, cookie: &str) -> Result<LibraryLoadRe
     })
 }
 
-pub fn fetch_home_payload(cookie: &str, is_user: bool) -> Result<HomeLoadResult, String> {
+pub fn fetch_home_payload(
+    cookie: &str,
+    is_user: bool,
+    artist_language: HomeArtistLanguage,
+) -> Result<HomeLoadResult, String> {
     let limit = 10;
     let mut recommend_playlists = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    if is_user && let Ok(items) = library_actions::fetch_daily_recommend_playlists_blocking(cookie)
-    {
+    if is_user {
+        let items = library_actions::fetch_daily_recommend_playlists_blocking(cookie)
+            .map_err(|err| format!("failed to fetch daily recommend playlists: {err}"))?;
         for item in items {
             if seen.insert(item.id) {
                 recommend_playlists.push(item);
@@ -121,7 +128,7 @@ pub fn fetch_home_payload(cookie: &str, is_user: bool) -> Result<HomeLoadResult,
     }
 
     for item in library_actions::fetch_personalized_playlists_blocking(limit, cookie)
-        .map_err(|err| err.to_string())?
+        .map_err(|err| format!("failed to fetch personalized playlists: {err}"))?
     {
         if seen.insert(item.id) {
             recommend_playlists.push(item);
@@ -131,20 +138,27 @@ pub fn fetch_home_payload(cookie: &str, is_user: bool) -> Result<HomeLoadResult,
         recommend_playlists.truncate(limit as usize);
     }
 
-    let recommend_artists = library_actions::fetch_recommend_artists_blocking(1, 6, cookie)
-        .map_err(|err| err.to_string())?;
+    let recommend_artists = library_actions::fetch_recommend_artists_blocking(
+        artist_language.toplist_type(),
+        6,
+        cookie,
+    )
+    .map_err(|err| format!("failed to fetch recommend artists: {err}"))?;
     let new_albums = library_actions::fetch_new_albums_blocking(10, 0, "ALL", cookie)
-        .map_err(|err| err.to_string())?;
-    let toplists =
-        library_actions::fetch_toplists_blocking(cookie).map_err(|err| err.to_string())?;
+        .map_err(|err| format!("failed to fetch new albums: {err}"))?;
+    let toplists = pick_home_toplists(
+        library_actions::fetch_toplists_blocking(cookie)
+            .map_err(|err| format!("failed to fetch toplists: {err}"))?,
+    );
     let daily_tracks = if is_user {
         library_actions::fetch_daily_recommend_tracks_blocking(cookie)
-            .map_err(|err| err.to_string())?
+            .map_err(|err| format!("failed to fetch daily tracks: {err}"))?
     } else {
         Vec::new()
     };
     let personal_fm = if is_user {
-        library_actions::fetch_personal_fm_blocking(cookie).map_err(|err| err.to_string())?
+        library_actions::fetch_personal_fm_blocking(cookie)
+            .map_err(|err| format!("failed to fetch personal fm: {err}"))?
     } else {
         None
     };
@@ -158,6 +172,27 @@ pub fn fetch_home_payload(cookie: &str, is_user: bool) -> Result<HomeLoadResult,
         personal_fm,
         fetched_at_ms: now_millis(),
     })
+}
+
+fn pick_home_toplists(
+    toplists: Vec<library_actions::ToplistItem>,
+) -> Vec<library_actions::ToplistItem> {
+    let mut by_id = toplists
+        .iter()
+        .cloned()
+        .map(|item| (item.id, item))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut picked = Vec::with_capacity(HOME_TOPLIST_IDS.len());
+    for id in HOME_TOPLIST_IDS {
+        if let Some(item) = by_id.remove(&id) {
+            picked.push(item);
+        }
+    }
+    if picked.is_empty() {
+        toplists.into_iter().take(5).collect()
+    } else {
+        picked
+    }
 }
 
 pub fn fetch_discover_payload(cookie: &str) -> Result<DiscoverLoadResult, String> {
@@ -336,4 +371,34 @@ fn set_playlist_state<C: AppContext>(runtime: &AppRuntime, state: PlaylistPageSt
         *playlist = state;
         cx.notify();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_home_toplists;
+    use crate::action::library_actions::ToplistItem;
+
+    fn toplist(id: i64) -> ToplistItem {
+        ToplistItem {
+            id,
+            name: format!("榜单{id}"),
+            update_frequency: "每日".to_string(),
+            cover_url: None,
+        }
+    }
+
+    #[test]
+    fn pick_home_toplists_uses_fixed_order() {
+        let input = vec![
+            toplist(60198),
+            toplist(180106),
+            toplist(19723756),
+            toplist(3812895),
+            toplist(60131),
+            toplist(123),
+        ];
+        let picked = pick_home_toplists(input);
+        let ids = picked.into_iter().map(|item| item.id).collect::<Vec<_>>();
+        assert_eq!(ids, vec![19723756, 180106, 60198, 3812895, 60131]);
+    }
 }

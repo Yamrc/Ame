@@ -3,7 +3,7 @@ use ame_core::storage::{AppStorage, CacheIndexStore, SettingsStore, StateStore};
 use nekowg::{AppContext, Context, Entity, Global};
 use serde::{Deserialize, Serialize};
 
-use crate::entity::app::{AppEntity, CloseBehavior, ShellState};
+use crate::entity::app::{AppEntity, CloseBehavior, HomeArtistLanguage, ShellState};
 use crate::entity::pages::{
     DiscoverPageState, HomePageState, LibraryPageState, LoginPageState, PlaylistPageState,
     SearchPageState,
@@ -19,6 +19,7 @@ pub const KEY_PLAYER_POSITION_MS: &str = "player.position_ms";
 pub const KEY_PLAYER_DURATION_MS: &str = "player.duration_ms";
 pub const KEY_PLAYER_WAS_PLAYING: &str = "player.was_playing";
 pub const KEY_WINDOW_CLOSE_BEHAVIOR: &str = "window.close_behavior";
+pub const KEY_HOME_ARTIST_LANGUAGE: &str = "home.artist_language";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersistedQueueItem {
@@ -67,6 +68,7 @@ impl AppRuntime {
         let mut services = AppServices::default();
         let mut persisted_was_playing = false;
         let mut close_behavior = CloseBehavior::default();
+        let mut home_artist_language = HomeArtistLanguage::default();
 
         if let Some(base_dir) = dirs::data_local_dir() {
             let db_path = base_dir.join("ame");
@@ -118,6 +120,13 @@ impl AppRuntime {
                 Ok(Some(value)) => close_behavior = value,
                 Ok(None) => {}
                 Err(err) => push_message(&mut startup_error, format!("读取关闭行为失败: {err}")),
+            }
+            match settings.get::<HomeArtistLanguage>(KEY_HOME_ARTIST_LANGUAGE) {
+                Ok(Some(value)) => home_artist_language = value,
+                Ok(None) => {}
+                Err(err) => {
+                    push_message(&mut startup_error, format!("读取首页艺人语种失败: {err}"))
+                }
             }
         }
 
@@ -189,7 +198,10 @@ impl AppRuntime {
 
         let runtime = Self {
             services,
-            app: cx.new(|_| AppEntity::default()),
+            app: cx.new(move |_| AppEntity {
+                search_query: String::new(),
+                home_artist_language,
+            }),
             player: cx.new(move |_| player_state.clone()),
             shell: cx.new(move |_| shell_state.clone()),
             session: cx.new(move |_| session_state.clone()),

@@ -4,13 +4,14 @@ use nekowg::{
 };
 
 use crate::component::{button, theme};
-use crate::entity::app::CloseBehavior;
+use crate::entity::app::{CloseBehavior, HomeArtistLanguage};
 use crate::entity::runtime::AppRuntime;
-use crate::entity::services::shell;
+use crate::entity::services::{preferences, shell};
 
 #[derive(Debug, Clone)]
 pub struct SettingsViewModel {
     pub close_behavior_label: SharedString,
+    pub home_artist_language_label: SharedString,
 }
 
 pub struct SettingsPageView {
@@ -29,12 +30,23 @@ impl SettingsPageView {
     fn set_close_behavior(&mut self, value: CloseBehavior, cx: &mut Context<Self>) {
         shell::set_close_behavior(&self.runtime, value, cx);
     }
+
+    fn set_home_artist_language(&mut self, value: HomeArtistLanguage, cx: &mut Context<Self>) {
+        preferences::set_home_artist_language(&self.runtime, value, cx);
+    }
 }
 
 impl Render for SettingsPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let model = SettingsViewModel {
             close_behavior_label: self.runtime.shell.read(cx).close_behavior.label().into(),
+            home_artist_language_label: self
+                .runtime
+                .app
+                .read(cx)
+                .home_artist_language
+                .label()
+                .into(),
         };
         let page = cx.entity();
         div()
@@ -101,6 +113,36 @@ impl Render for SettingsPageView {
                                 )
                             }),
                     ),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .rounded_lg()
+                    .bg(rgb(theme::COLOR_CARD_DARK))
+                    .px_4()
+                    .py_3()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_color(rgb(theme::COLOR_SECONDARY))
+                    .child(format!(
+                        "首页推荐艺人语种: {}",
+                        model.home_artist_language_label
+                    ))
+                    .child(HomeArtistLanguage::variants().into_iter().fold(
+                        div().flex().items_center().gap_2(),
+                        |row, language| {
+                            let page = page.clone();
+                            row.child(button::pill_base(language.label()).on_mouse_down(
+                                MouseButton::Left,
+                                move |_, _, cx| {
+                                    page.update(cx, |this, cx| {
+                                        this.set_home_artist_language(language, cx);
+                                    });
+                                },
+                            ))
+                        },
+                    )),
             )
             .into_any_element()
     }

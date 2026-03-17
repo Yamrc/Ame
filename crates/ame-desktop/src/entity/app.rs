@@ -18,14 +18,52 @@ impl CloseBehavior {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum HomeArtistLanguage {
+    Chinese,
+    Western,
+    Korean,
+    #[default]
+    Japanese,
+}
+
+impl HomeArtistLanguage {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Chinese => "华语",
+            Self::Western => "欧美",
+            Self::Korean => "韩语",
+            Self::Japanese => "日语",
+        }
+    }
+
+    pub const fn toplist_type(self) -> u32 {
+        match self {
+            Self::Chinese => 1,
+            Self::Western => 2,
+            Self::Korean => 3,
+            Self::Japanese => 4,
+        }
+    }
+
+    pub const fn variants() -> [Self; 4] {
+        [Self::Japanese, Self::Chinese, Self::Western, Self::Korean]
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct AppEntity {
     pub search_query: String,
+    pub home_artist_language: HomeArtistLanguage,
 }
 
 impl AppEntity {
     pub fn set_search_query(&mut self, query: impl Into<String>) {
         self.search_query = query.into();
+    }
+
+    pub fn set_home_artist_language(&mut self, language: HomeArtistLanguage) {
+        self.home_artist_language = language;
     }
 }
 
@@ -33,4 +71,22 @@ impl AppEntity {
 pub struct ShellState {
     pub error: Option<String>,
     pub close_behavior: CloseBehavior,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HomeArtistLanguage;
+
+    #[test]
+    fn home_artist_language_type_mapping_matches_ypm_table() {
+        assert_eq!(HomeArtistLanguage::Chinese.toplist_type(), 1);
+        assert_eq!(HomeArtistLanguage::Western.toplist_type(), 2);
+        assert_eq!(HomeArtistLanguage::Korean.toplist_type(), 3);
+        assert_eq!(HomeArtistLanguage::Japanese.toplist_type(), 4);
+    }
+
+    #[test]
+    fn home_artist_language_default_is_japanese() {
+        assert_eq!(HomeArtistLanguage::default(), HomeArtistLanguage::Japanese);
+    }
 }
