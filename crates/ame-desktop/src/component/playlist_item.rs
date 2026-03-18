@@ -45,6 +45,7 @@ pub fn render(props: PlaylistItemProps, actions: PlaylistItemActions) -> AnyElem
                 .gap(px(12.))
                 .child(match props.cover_url.as_deref() {
                     Some(url) => img(image_resize_url(url, "256y256"))
+                        .id(format!("playlist.cover.{}", url))
                         .size(props.cover_size)
                         .rounded_md()
                         .object_fit(ObjectFit::Cover)

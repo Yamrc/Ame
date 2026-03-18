@@ -1236,6 +1236,7 @@ fn render_context_menu_header_track(
 ) -> AnyElement {
     let cover = match cover_url.as_deref() {
         Some(url) => img(image_resize_url(url, "96y96"))
+            .id(format!("ctx.song.cover.{:?}", url))
             .size(style.header_cover_size)
             .rounded_md()
             .object_fit(ObjectFit::Cover)

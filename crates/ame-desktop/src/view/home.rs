@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use nekowg::{
-    AnyElement, App, Context, Entity, FontWeight, MouseButton, ObjectFit, Render, Subscription,
-    TextAlign, Window, div, img, linear_color_stop, linear_gradient, prelude::*, px, relative, rgb,
-    rgba,
+    AnyElement, App, Context, Entity, FontWeight, MouseButton, Render, Subscription, Window, div,
+    img, linear_color_stop, linear_gradient, prelude::*, px, rgb, rgba,
 };
 
 use crate::action::library_actions;
@@ -17,6 +16,7 @@ use crate::view::common;
 use crate::{
     component::{
         button,
+        cover_card::{self, ArtistCoverCardProps, CoverCardActions, PlaylistCoverCardProps},
         icon::{self, IconName},
         theme,
     },
@@ -172,59 +172,6 @@ pub fn fm_featured_card(
     on_open: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
     featured_fm_card(item, on_open)
-}
-
-pub fn artist_card(
-    name: String,
-    cover_url: Option<String>,
-    on_open: impl Fn(&mut App) + 'static,
-) -> AnyElement {
-    let mut avatar = div()
-        .w_full()
-        .relative()
-        .pb(relative(1.0))
-        .rounded_full()
-        .overflow_hidden();
-
-    if let Some(url) = cover_url.as_deref() {
-        avatar = avatar.child(
-            img(image_resize_url(url, "256y256"))
-                .id(format!("home-artist-{url}"))
-                .absolute()
-                .left(px(0.))
-                .top(px(0.))
-                .right(px(0.))
-                .bottom(px(0.))
-                .size_full()
-                .object_fit(ObjectFit::Cover)
-                .rounded_full(),
-        );
-    } else {
-        avatar = avatar.bg(rgb(0x3B3B3B));
-    }
-
-    div()
-        .w_full()
-        .cursor_pointer()
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
-        .child(
-            div()
-                .w_full()
-                .flex()
-                .flex_col()
-                .items_center()
-                .child(avatar)
-                .child(
-                    div()
-                        .mt(px(12.))
-                        .text_size(px(15.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_align(TextAlign::Center)
-                        .overflow_hidden()
-                        .child(name),
-                ),
-        )
-        .into_any_element()
 }
 
 fn featured_daily_card(
@@ -460,49 +407,6 @@ fn shift_color(color: u32, delta: i16) -> u32 {
     let g = g.clamp(0, 255) as u32;
     let b = b.clamp(0, 255) as u32;
     (r << 16) | (g << 8) | b
-}
-
-pub fn playlist_card(item: HomePlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
-    let cover = item.cover_url.clone();
-    div()
-        .w_full()
-        .cursor_pointer()
-        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_open(cx))
-        .child(match cover {
-            Some(url) => img(image_resize_url(&url, "256y256"))
-                .id(format!("home-playlist-{}", &url))
-                .w_full()
-                .h(px(166.))
-                .rounded_lg()
-                .overflow_hidden()
-                .into_any_element(),
-            None => div()
-                .w_full()
-                .h(px(166.))
-                .rounded_lg()
-                .bg(rgb(0x3B3B3B))
-                .into_any_element(),
-        })
-        .child(
-            div()
-                .mt(px(8.))
-                .text_size(px(16.))
-                .line_height(relative(1.2))
-                .font_weight(FontWeight::BOLD)
-                .overflow_hidden()
-                .child(item.name),
-        )
-        .child(
-            div()
-                .mt(px(2.))
-                .text_size(px(12.))
-                .line_height(relative(1.2))
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgb(theme::COLOR_SECONDARY))
-                .overflow_hidden()
-                .child(item.subtitle),
-        )
-        .into_any_element()
 }
 
 fn grid_section(rows: Vec<AnyElement>, empty_label: &'static str, columns: usize) -> AnyElement {
@@ -864,23 +768,63 @@ impl Render for HomePageView {
             .map(|item| {
                 let playlist_id = item.id;
                 let on_open_playlist = on_open_playlist.clone();
-                playlist_card(item, move |cx| on_open_playlist(playlist_id, cx))
+                cover_card::render_playlist_card(
+                    PlaylistCoverCardProps {
+                        title: item.name,
+                        subtitle: item.subtitle,
+                        cover_url: item.cover_url,
+                        cover_height: px(166.),
+                    },
+                    CoverCardActions {
+                        on_open: Some(std::rc::Rc::new(move |cx| {
+                            on_open_playlist(playlist_id, cx)
+                        })),
+                    },
+                )
             })
             .collect();
         let artist_rows = snapshot
             .artists
             .into_iter()
-            .map(|artist| artist_card(artist.name, artist.cover_url, move |_cx| {}))
+            .map(|artist| {
+                cover_card::render_artist_card(
+                    ArtistCoverCardProps {
+                        name: artist.name,
+                        cover_url: artist.cover_url,
+                    },
+                    CoverCardActions::default(),
+                )
+            })
             .collect();
         let album_rows = snapshot
             .albums
             .into_iter()
-            .map(|item| playlist_card(item, move |_cx| {}))
+            .map(|item| {
+                cover_card::render_playlist_card(
+                    PlaylistCoverCardProps {
+                        title: item.name,
+                        subtitle: item.subtitle,
+                        cover_url: item.cover_url,
+                        cover_height: px(166.),
+                    },
+                    CoverCardActions::default(),
+                )
+            })
             .collect();
         let toplist_rows = snapshot
             .toplists
             .into_iter()
-            .map(|item| playlist_card(item, move |_cx| {}))
+            .map(|item| {
+                cover_card::render_playlist_card(
+                    PlaylistCoverCardProps {
+                        title: item.name,
+                        subtitle: item.subtitle,
+                        cover_url: item.cover_url,
+                        cover_height: px(166.),
+                    },
+                    CoverCardActions::default(),
+                )
+            })
             .collect();
 
         let status = common::status_banner(

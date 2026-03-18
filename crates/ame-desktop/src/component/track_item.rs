@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
 use nekowg::{
@@ -11,7 +11,7 @@ use crate::component::context_menu::ContextMenuExt;
 use crate::component::theme;
 use crate::util::url::image_resize_url;
 
-type TrackAction = Arc<dyn Fn(&mut App)>;
+type TrackAction = Rc<dyn Fn(&mut App)>;
 
 const ROW_COVER_SIZE: f32 = 46.;
 const ROW_HEIGHT: f32 = 58.;
@@ -40,6 +40,7 @@ pub struct TrackItemProps {
 pub struct TrackItemActions {
     pub on_play: Option<TrackAction>,
     pub on_enqueue: Option<TrackAction>,
+    pub on_remove: Option<TrackAction>,
     pub on_open_artist: Option<TrackAction>,
     pub on_open_album: Option<TrackAction>,
 }
@@ -88,6 +89,7 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
     let cover = if props.show_cover {
         Some(match props.cover_url.as_deref() {
             Some(url) => img(image_resize_url(url, "64y64"))
+                .id(format!("song.cover.{}", url))
                 .size(px(ROW_COVER_SIZE))
                 .rounded_md()
                 .object_fit(ObjectFit::Cover)
@@ -204,6 +206,9 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
         }
         if let Some(on_enqueue) = actions.on_enqueue.clone() {
             menu = menu.item("入队", move |_window, cx| on_enqueue(cx));
+        }
+        if let Some(on_remove) = actions.on_remove.clone() {
+            menu = menu.item("移出队列", move |_window, cx| on_remove(cx));
         }
         if actions.on_open_artist.is_some() || actions.on_open_album.is_some() {
             menu = menu.separator();

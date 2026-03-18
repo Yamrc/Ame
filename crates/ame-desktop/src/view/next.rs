@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::Arc;
 
 use nekowg::{
@@ -5,13 +6,17 @@ use nekowg::{
     ScrollHandle, Subscription, Window, div, prelude::*, px, rgb,
 };
 
-use crate::component::{button, theme, virtual_list};
+use crate::component::{
+    button, theme,
+    track_item::{self, TrackItemActions, TrackItemProps},
+    virtual_list,
+};
 use crate::entity::player::QueueItem;
 use crate::entity::player_controller::PlayerController;
 use crate::entity::runtime::AppRuntime;
 
-type QueueItemActionHandler = Arc<dyn Fn(i64, &mut App)>;
-type QueueActionHandler = Arc<dyn Fn(&mut App)>;
+type QueueItemActionHandler = Rc<dyn Fn(i64, &mut App)>;
+type QueueActionHandler = Rc<dyn Fn(&mut App)>;
 
 #[derive(Debug, Clone)]
 pub struct NextPageSnapshot {
@@ -35,46 +40,30 @@ impl NextPageSnapshot {
     }
 }
 
-pub fn queue_row(
+fn queue_track_row(
     item: QueueItem,
-    on_play: impl Fn(&mut App) + 'static,
-    on_remove: impl Fn(&mut App) + 'static,
+    is_playing: bool,
+    on_play: Option<QueueActionHandler>,
+    on_remove: Option<QueueActionHandler>,
 ) -> AnyElement {
-    div()
-        .w_full()
-        .rounded_lg()
-        .bg(rgb(theme::COLOR_CARD_DARK))
-        .px_4()
-        .py_3()
-        .flex()
-        .items_center()
-        .justify_between()
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(div().font_weight(FontWeight::BOLD).child(item.name))
-                .child(
-                    div()
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .child(format!("ID {}", item.id)),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .child(
-                    button::pill_base("播放")
-                        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_play(cx)),
-                )
-                .child(
-                    button::pill_base("移除")
-                        .on_mouse_down(MouseButton::Left, move |_, _, cx| on_remove(cx)),
-                ),
-        )
-        .into_any_element()
+    track_item::render(
+        TrackItemProps {
+            id: item.id,
+            title: item.name,
+            alias: item.alias,
+            artists: item.artist,
+            album: None,
+            duration_ms: None,
+            cover_url: item.cover_url,
+            show_cover: true,
+            is_playing,
+        },
+        TrackItemActions {
+            on_play,
+            on_remove,
+            ..TrackItemActions::default()
+        },
+    )
 }
 
 pub struct NextPageView {
@@ -108,19 +97,19 @@ impl Render for NextPageView {
 
         let on_play_item: QueueItemActionHandler = {
             let player_controller = self.player_controller.clone();
-            Arc::new(move |item_id, cx| {
+            Rc::new(move |item_id, cx| {
                 player_controller.update(cx, |this, cx| this.play_queue_item(item_id, cx));
             })
         };
         let on_remove_item: QueueItemActionHandler = {
             let player_controller = self.player_controller.clone();
-            Arc::new(move |item_id, cx| {
+            Rc::new(move |item_id, cx| {
                 player_controller.update(cx, |this, cx| this.remove_queue_item(item_id, cx));
             })
         };
         let on_clear_queue: QueueActionHandler = {
             let player_controller = self.player_controller.clone();
-            Arc::new(move |cx| {
+            Rc::new(move |cx| {
                 player_controller.update(cx, |this, cx| this.clear_queue(cx));
             })
         };
@@ -143,10 +132,11 @@ impl Render for NextPageView {
                             let remove_id = item.id;
                             let on_play_item = on_play_item.clone();
                             let on_remove_item = on_remove_item.clone();
-                            nekowg::div().pb(px(8.)).child(queue_row(
+                            nekowg::div().pb(px(8.)).child(queue_track_row(
                                 item,
-                                move |cx| on_play_item(play_id, cx),
-                                move |cx| on_remove_item(remove_id, cx),
+                                false,
+                                Some(Rc::new(move |cx| on_play_item(play_id, cx))),
+                                Some(Rc::new(move |cx| on_remove_item(remove_id, cx))),
                             ))
                         })
                         .collect::<Vec<_>>()
@@ -171,22 +161,7 @@ impl Render for NextPageView {
         };
 
         let now_playing = if let Some(track) = snapshot.current_track {
-            div()
-                .w_full()
-                .rounded_lg()
-                .bg(rgb(theme::COLOR_CARD_DARK))
-                .px_4()
-                .py_3()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .child(div().font_weight(FontWeight::BOLD).child(track.name))
-                .child(
-                    div()
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .child(format!("ID {}", track.id)),
-                )
-                .into_any_element()
+            queue_track_row(track, true, None, None)
         } else {
             div()
                 .w_full()

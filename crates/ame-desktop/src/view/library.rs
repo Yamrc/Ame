@@ -2,10 +2,12 @@ use nekowg::{
     AnyElement, App, Context, Entity, FontWeight, MouseButton, Render, Subscription, Window, div,
     img, prelude::*, px, relative, rgb,
 };
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::action::library_actions::{LibraryPlaylistItem, PlaylistTrackItem};
-use crate::component::playlist_item::{self, PlaylistItemActions, PlaylistItemProps};
+use crate::component::cover_card::{self, CoverCardActions, PlaylistCoverCardProps};
+use crate::component::short_track_item::{self, ShortTrackItemActions, ShortTrackItemProps};
 use crate::component::{button, icon, theme};
 use crate::entity::pages::DataState;
 use crate::entity::player_controller::{PlayerController, QueueTrackInput};
@@ -20,8 +22,9 @@ const PREVIEW_COLS: usize = 3;
 const PREVIEW_MAX: usize = 12;
 const PREVIEW_ROW_HEIGHT: f32 = 52.0;
 const PREVIEW_ROW_GAP: f32 = 8.0;
+const PLAYLIST_GRID_COLUMNS: usize = 5;
 type PreviewPlayHandler = Arc<dyn Fn(PlaylistTrackItem, &mut App)>;
-type PlaylistActionHandler = Arc<dyn Fn(i64, &mut App)>;
+type PlaylistActionHandler = Rc<dyn Fn(i64, &mut App)>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryPlaylistCard {
@@ -115,22 +118,6 @@ impl LibraryPageSnapshot {
             cover_url: item.cover_url.clone(),
         }
     }
-}
-
-pub fn playlist_row(item: LibraryPlaylistCard, on_open: impl Fn(&mut App) + 'static) -> AnyElement {
-    playlist_item::render(
-        PlaylistItemProps {
-            id: item.id,
-            name: item.name,
-            creator: item.creator_name,
-            track_count: Some(item.track_count),
-            cover_url: item.cover_url,
-            cover_size: px(58.),
-        },
-        PlaylistItemActions {
-            on_open: Arc::new(on_open),
-        },
-    )
 }
 
 pub fn liked_card(
@@ -240,84 +227,27 @@ fn liked_preview_list(
         return common::empty_card("暂无喜欢歌曲");
     }
 
-    let hover_style = button::ButtonStyle {
-        padding: px(4.),
-        margin: px(0.),
-        radius: px(10.),
-        base_bg: button::transparent_bg(),
-        hover_bg: button::hover_bg(),
-        hover_duration_ms: 160,
-    };
-
     div()
         .overflow_hidden()
         .grid()
         .grid_cols(PREVIEW_COLS as u16)
         .gap(px(row_gap))
         .children(tracks.iter().take(PREVIEW_MAX).map(|track| {
-            let cover = track.cover_url.clone();
             let track_for_play = track.clone();
             let on_play = on_play.clone();
-            let row = div()
-                .w_full()
-                .h(px(row_height))
-                .flex()
-                .items_center()
-                .gap(px(10.))
-                .rounded(px(10.))
-                .px(px(8.))
-                .py(px(4.))
-                .cursor_pointer()
-                .on_mouse_down(MouseButton::Left, move |event, _, cx| {
-                    if event.click_count >= 2 {
-                        on_play(track_for_play.clone(), cx);
-                    }
-                })
-                .child(match cover {
-                    Some(url) => img(image_resize_url(&url, "64y64"))
-                        .size(px(36.))
-                        .rounded_md()
-                        .overflow_hidden()
-                        .flex_shrink_0()
-                        .into_any_element(),
-                    None => div()
-                        .size(px(36.))
-                        .rounded_md()
-                        .bg(rgb(0x3B3B3B))
-                        .flex_shrink_0()
-                        .into_any_element(),
-                })
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .flex()
-                        .flex_col()
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .text_size(px(16.))
-                                .font_weight(FontWeight::BOLD)
-                                .overflow_hidden()
-                                .truncate()
-                                .child(track.name.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(13.))
-                                .text_color(rgb(theme::COLOR_SECONDARY))
-                                .overflow_hidden()
-                                .truncate()
-                                .child(track.artists.clone()),
-                        ),
-                );
-
-            button::icon_interactive(
-                format!("library-liked-preview-{}", track.id),
-                row,
-                hover_style,
+            short_track_item::render(
+                ShortTrackItemProps {
+                    id: track.id,
+                    title: track.name.clone(),
+                    subtitle: track.artists.clone(),
+                    cover_url: track.cover_url.clone(),
+                    height: px(row_height),
+                },
+                ShortTrackItemActions {
+                    on_play: Some(Rc::new(move |cx| on_play(track_for_play.clone(), cx))),
+                    ..ShortTrackItemActions::default()
+                },
             )
-            .into_any_element()
         }))
         .into_any_element()
 }
@@ -376,14 +306,24 @@ fn render_tabs(
         .into_any_element()
 }
 
-fn render_tab_panel(rows: Vec<AnyElement>, empty_label: &str) -> AnyElement {
-    if rows.is_empty() {
+fn render_tab_panel(cards: Vec<AnyElement>, empty_label: &str) -> AnyElement {
+    if cards.is_empty() {
         return common::empty_card(empty_label.to_string());
     }
-    common::stacked_rows(rows, px(8.))
+    cards
+        .into_iter()
+        .fold(
+            div()
+                .w_full()
+                .grid()
+                .grid_cols(PLAYLIST_GRID_COLUMNS as u16)
+                .gap(px(18.)),
+            |grid, card| grid.child(card),
+        )
+        .into_any_element()
 }
 
-fn build_playlist_rows(
+fn build_playlist_cards(
     playlists: &[LibraryPlaylistCard],
     on_open_playlist: PlaylistActionHandler,
 ) -> Vec<AnyElement> {
@@ -393,7 +333,17 @@ fn build_playlist_rows(
         .map(|item| {
             let playlist_id = item.id;
             let on_open_playlist = on_open_playlist.clone();
-            playlist_row(item, move |cx| on_open_playlist(playlist_id, cx))
+            cover_card::render_playlist_card(
+                PlaylistCoverCardProps {
+                    title: item.name,
+                    subtitle: format!("{} 首 · {}", item.track_count, item.creator_name),
+                    cover_url: item.cover_url,
+                    cover_height: px(166.),
+                },
+                CoverCardActions {
+                    on_open: Some(Rc::new(move |cx| on_open_playlist(playlist_id, cx))),
+                },
+            )
         })
         .collect()
 }
@@ -603,7 +553,7 @@ impl Render for LibraryPageView {
         let page = cx.entity();
         let on_open_playlist: PlaylistActionHandler = {
             let page = page.clone();
-            Arc::new(move |playlist_id, cx| {
+            Rc::new(move |playlist_id, cx| {
                 page.update(cx, |_, cx| {
                     router::navigate(cx, format!("/playlist/{playlist_id}"));
                 });
@@ -611,7 +561,7 @@ impl Render for LibraryPageView {
         };
         let on_replace_queue_from_playlist: PlaylistActionHandler = {
             let page = page.clone();
-            Arc::new(move |playlist_id, cx| {
+            Rc::new(move |playlist_id, cx| {
                 page.update(cx, |this, cx| {
                     this.replace_queue_from_playlist(playlist_id, cx)
                 });
@@ -662,12 +612,12 @@ impl Render for LibraryPageView {
                 move |cx| on_replace_queue_from_playlist(playlist_id, cx),
             )
         });
-        let created_rows =
-            build_playlist_rows(&snapshot.created_playlists, on_open_playlist.clone());
-        let collected_rows =
-            build_playlist_rows(&snapshot.collected_playlists, on_open_playlist.clone());
-        let followed_rows =
-            build_playlist_rows(&snapshot.followed_playlists, on_open_playlist.clone());
+        let created_cards =
+            build_playlist_cards(&snapshot.created_playlists, on_open_playlist.clone());
+        let collected_cards =
+            build_playlist_cards(&snapshot.collected_playlists, on_open_playlist.clone());
+        let followed_cards =
+            build_playlist_cards(&snapshot.followed_playlists, on_open_playlist.clone());
 
         let status = common::status_banner(
             snapshot.loading,
@@ -691,9 +641,9 @@ impl Render for LibraryPageView {
             on_tab_followed,
         );
         let panel = match snapshot.active_tab {
-            LibraryTab::Created => render_tab_panel(created_rows, "暂无创建歌单"),
-            LibraryTab::Collected => render_tab_panel(collected_rows, "暂无收藏歌单"),
-            LibraryTab::Followed => render_tab_panel(followed_rows, "暂无关注"),
+            LibraryTab::Created => render_tab_panel(created_cards, "暂无创建歌单"),
+            LibraryTab::Collected => render_tab_panel(collected_cards, "暂无收藏歌单"),
+            LibraryTab::Followed => render_tab_panel(followed_cards, "暂无关注"),
         };
 
         div()

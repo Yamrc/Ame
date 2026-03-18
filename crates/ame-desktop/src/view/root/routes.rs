@@ -41,6 +41,10 @@ impl RootView {
                 let page = self.pages.search.clone();
                 move |_, _| page.clone().into_any_element()
             }))
+            .child(Route::new().path("search/{keywords}/{type}").element({
+                let page = self.pages.search.clone();
+                move |_, _| page.clone().into_any_element()
+            }))
             .child(Route::new().path("daily/songs").element({
                 let page = self.pages.daily_tracks.clone();
                 move |_, _| page.clone().into_any_element()

@@ -1,11 +1,13 @@
 pub mod bottom_bar;
 pub mod button;
 pub mod context_menu;
+pub mod cover_card;
 pub mod icon;
 pub mod input;
 pub mod nav_bar;
 pub mod playlist_item;
 pub mod scroll;
+pub mod short_track_item;
 pub mod slider;
 pub mod theme;
 pub mod title_bar;

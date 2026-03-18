@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,8 +19,8 @@ use crate::router::{self, RouterState, use_params};
 use crate::view::common;
 use std::collections::HashMap;
 
-type TrackActionHandler = Arc<dyn Fn(PlaylistTrackRow, &mut App)>;
-type ReplaceQueueHandler = Arc<dyn Fn(i64, &mut App)>;
+type TrackActionHandler = Rc<dyn Fn(PlaylistTrackRow, &mut App)>;
+type ReplaceQueueHandler = Rc<dyn Fn(i64, &mut App)>;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaylistTrackRow {
     pub id: i64,
@@ -87,8 +88,8 @@ pub fn track_row(
             is_playing,
         },
         TrackItemActions {
-            on_play: Some(Arc::new(on_play)),
-            on_enqueue: Some(Arc::new(on_enqueue)),
+            on_play: Some(Rc::new(on_play)),
+            on_enqueue: Some(Rc::new(on_enqueue)),
             ..TrackItemActions::default()
         },
     )
@@ -299,7 +300,7 @@ impl Render for PlaylistPageView {
         );
         let on_play_track: TrackActionHandler = {
             let player_controller = self.player_controller.clone();
-            Arc::new(move |track, cx| {
+            Rc::new(move |track, cx| {
                 player_controller.update(cx, |this, cx| {
                     this.enqueue_track(track.into(), true, cx);
                 });
@@ -307,7 +308,7 @@ impl Render for PlaylistPageView {
         };
         let on_enqueue_track: TrackActionHandler = {
             let player_controller = self.player_controller.clone();
-            Arc::new(move |track, cx| {
+            Rc::new(move |track, cx| {
                 player_controller.update(cx, |this, cx| {
                     this.enqueue_track(track.into(), false, cx);
                 });
@@ -315,7 +316,7 @@ impl Render for PlaylistPageView {
         };
         let on_replace_queue: ReplaceQueueHandler = {
             let page = cx.entity();
-            Arc::new(move |playlist_id, cx| {
+            Rc::new(move |playlist_id, cx| {
                 page.update(cx, |this, cx| {
                     this.replace_queue_from_current_playlist(playlist_id, cx);
                 });

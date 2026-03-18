@@ -92,9 +92,39 @@ impl Default for LibraryPageState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchCollectionState<T> {
+    pub keyword: String,
+    pub items: DataState<Vec<T>>,
+    pub has_more: bool,
+}
+
+impl<T> Default for SearchCollectionState<T> {
+    fn default() -> Self {
+        Self {
+            keyword: String::new(),
+            items: DataState::default(),
+            has_more: true,
+        }
+    }
+}
+
+impl<T> SearchCollectionState<T> {
+    pub fn clear(&mut self) {
+        self.keyword.clear();
+        self.items.clear();
+        self.has_more = true;
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SearchPageState {
-    pub results: DataState<Vec<search::SearchSong>>,
+    pub overview_keyword: String,
+    pub overview: DataState<search::SearchOverview>,
+    pub artists: SearchCollectionState<search::SearchArtist>,
+    pub albums: SearchCollectionState<search::SearchAlbum>,
+    pub tracks: SearchCollectionState<search::SearchSong>,
+    pub playlists: SearchCollectionState<search::SearchPlaylist>,
 }
 
 #[derive(Debug, Clone)]

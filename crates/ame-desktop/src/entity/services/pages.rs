@@ -210,30 +210,154 @@ pub fn fetch_daily_tracks_payload(
     library_actions::fetch_daily_recommend_tracks_blocking(cookie).map_err(|err| err.to_string())
 }
 
-pub fn fetch_search_payload(
+pub fn fetch_search_overview_payload(
     query: &str,
     cookie: Option<&str>,
-) -> Result<Vec<search::SearchSong>, String> {
+) -> Result<search::SearchOverview, String> {
     let query = query.trim();
     if query.is_empty() {
-        return Ok(Vec::new());
+        return Ok(search::SearchOverview::default());
     }
 
-    search_actions::search_song_blocking(query, cookie)
-        .map_err(|err| err.to_string())
-        .map(|items| {
-            items
-                .into_iter()
-                .map(|item| search::SearchSong {
-                    id: item.id,
-                    name: item.name,
-                    alias: item.alias,
-                    artists: item.artists,
-                    album: item.album,
-                    duration_ms: item.duration_ms,
-                })
-                .collect()
-        })
+    let artists = search_actions::search_artists_blocking(query, 0, 16, cookie)
+        .map_err(|err| err.to_string())?;
+    let albums = search_actions::search_albums_blocking(query, 0, 16, cookie)
+        .map_err(|err| err.to_string())?;
+    let tracks = search_actions::search_songs_blocking(query, 0, 16, cookie)
+        .map_err(|err| err.to_string())?;
+    let playlists = search_actions::search_playlists_blocking(query, 0, 16, cookie)
+        .map_err(|err| err.to_string())?;
+
+    Ok(search::SearchOverview {
+        artists: artists.items.into_iter().map(map_search_artist).collect(),
+        albums: albums.items.into_iter().map(map_search_album).collect(),
+        tracks: tracks.items.into_iter().map(map_search_song).collect(),
+        playlists: playlists
+            .items
+            .into_iter()
+            .map(map_search_playlist)
+            .collect(),
+    })
+}
+
+pub fn fetch_search_type_payload(
+    query: &str,
+    route_type: search::SearchRouteType,
+    offset: u32,
+    limit: u32,
+    cookie: Option<&str>,
+) -> Result<search::SearchTypePayload, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return match route_type {
+            search::SearchRouteType::Artists => Ok(search::SearchTypePayload::Artists(
+                search::SearchPageSlice {
+                    items: Vec::new(),
+                    has_more: false,
+                },
+            )),
+            search::SearchRouteType::Albums => {
+                Ok(search::SearchTypePayload::Albums(search::SearchPageSlice {
+                    items: Vec::new(),
+                    has_more: false,
+                }))
+            }
+            search::SearchRouteType::Tracks => {
+                Ok(search::SearchTypePayload::Tracks(search::SearchPageSlice {
+                    items: Vec::new(),
+                    has_more: false,
+                }))
+            }
+            search::SearchRouteType::Playlists => Ok(search::SearchTypePayload::Playlists(
+                search::SearchPageSlice {
+                    items: Vec::new(),
+                    has_more: false,
+                },
+            )),
+        };
+    }
+
+    match route_type {
+        search::SearchRouteType::Artists => {
+            let page = search_actions::search_artists_blocking(query, offset, limit, cookie)
+                .map_err(|err| err.to_string())?;
+            Ok(search::SearchTypePayload::Artists(
+                search::SearchPageSlice {
+                    items: page.items.into_iter().map(map_search_artist).collect(),
+                    has_more: page.has_more,
+                },
+            ))
+        }
+        search::SearchRouteType::Albums => {
+            let page = search_actions::search_albums_blocking(query, offset, limit, cookie)
+                .map_err(|err| err.to_string())?;
+            Ok(search::SearchTypePayload::Albums(search::SearchPageSlice {
+                items: page.items.into_iter().map(map_search_album).collect(),
+                has_more: page.has_more,
+            }))
+        }
+        search::SearchRouteType::Tracks => {
+            let page = search_actions::search_songs_blocking(query, offset, limit, cookie)
+                .map_err(|err| err.to_string())?;
+            Ok(search::SearchTypePayload::Tracks(search::SearchPageSlice {
+                items: page.items.into_iter().map(map_search_song).collect(),
+                has_more: page.has_more,
+            }))
+        }
+        search::SearchRouteType::Playlists => {
+            let page = search_actions::search_playlists_blocking(query, offset, limit, cookie)
+                .map_err(|err| err.to_string())?;
+            Ok(search::SearchTypePayload::Playlists(
+                search::SearchPageSlice {
+                    items: page.items.into_iter().map(map_search_playlist).collect(),
+                    has_more: page.has_more,
+                },
+            ))
+        }
+    }
+}
+
+fn map_search_song(item: search_actions::SearchSongItem) -> search::SearchSong {
+    search::SearchSong {
+        id: item.id,
+        name: item.name,
+        alias: item.alias,
+        artists: item.artists,
+        album: item.album,
+        duration_ms: item.duration_ms,
+        cover_url: item.cover_url,
+    }
+}
+
+fn map_search_artist(item: search_actions::SearchArtistItem) -> search::SearchArtist {
+    search::SearchArtist {
+        id: item.id,
+        name: item.name,
+        cover_url: item.cover_url,
+    }
+}
+
+fn map_search_album(item: search_actions::SearchAlbumItem) -> search::SearchAlbum {
+    search::SearchAlbum {
+        id: item.id,
+        name: item.name,
+        artist_name: item.artist_name,
+        cover_url: item.cover_url,
+    }
+}
+
+fn map_search_playlist(item: search_actions::SearchPlaylistItem) -> search::SearchPlaylist {
+    search::SearchPlaylist {
+        id: item.id,
+        name: item.name,
+        creator_name: if item.track_count == 0 {
+            item.creator_name
+        } else {
+            format!("{} 首 · {}", item.track_count, item.creator_name)
+        },
+        track_count: item.track_count,
+        cover_url: item.cover_url,
+    }
 }
 
 pub fn ensure_playlist_page_loaded<C: AppContext>(

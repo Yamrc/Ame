@@ -32,7 +32,7 @@ impl From<search::SearchSong> for QueueTrackInput {
             name: value.name,
             alias: value.alias,
             artists: value.artists,
-            cover_url: None,
+            cover_url: value.cover_url,
         }
     }
 }
