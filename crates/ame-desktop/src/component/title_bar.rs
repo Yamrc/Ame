@@ -5,8 +5,8 @@ use nekowg::{
     prelude::*, px, rgb, rgba,
 };
 
-use crate::component::theme;
 use crate::component::{icon, icon::IconName};
+use crate::component::{page_scaffold, theme};
 
 #[derive(Debug, Clone)]
 pub struct TitleBarModel {
@@ -27,7 +27,7 @@ pub fn title_bar(title: impl Into<SharedString>, controls: AnyElement) -> Div {
     div()
         .flex_none()
         .w_full()
-        .h(px(32.))
+        .h(px(page_scaffold::TITLE_BAR_HEIGHT_PX))
         .flex()
         .items_center()
         .justify_between()
@@ -62,7 +62,7 @@ pub fn window_control_button(area: WindowControlArea, icon_name: IconName, is_cl
 
     let button = div()
         .w(px(46.))
-        .h(px(32.))
+        .h(px(page_scaffold::TITLE_BAR_HEIGHT_PX))
         .window_control_area(area)
         .cursor_pointer()
         .flex()

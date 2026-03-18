@@ -3,7 +3,7 @@ mod routes;
 use crate::router;
 use nekowg::{
     AnyElement, Context, Entity, Render, ScrollWheelEvent, Subscription, Window, div, prelude::*,
-    relative, rgb,
+    px, relative, rgb,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -13,6 +13,7 @@ use ame_audio::{AudioConfig, AudioService};
 use crate::component::{
     bottom_bar, input,
     nav_bar::{self, NavBarActions, NavBarModel},
+    page_scaffold,
     scroll::{
         ScrollBarActions, ScrollBarModel, ScrollBarStyle, SmoothScrollConfig, SmoothScrollState,
     },
@@ -517,9 +518,7 @@ impl Render for RootView {
 
         let main_content = div()
             .id("main-content")
-            .w_full()
-            .flex_grow()
-            .min_h_0()
+            .size_full()
             .relative()
             .overflow_hidden()
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
@@ -540,24 +539,39 @@ impl Render for RootView {
                     .h_full()
                     .track_scroll(&self.main_scroll.handle)
                     .overflow_hidden()
-                    .child(routes),
+                    .child(page_scaffold::overlay_scroll_content(routes)),
             )
             .child(self.render_scrollbar(cx))
             .into_any_element();
 
         div()
             .size_full()
+            .relative()
             .bg(rgb(theme::COLOR_BODY_BG_DARK))
             .text_color(rgb(theme::COLOR_TEXT_DARK))
             .font_family("Noto Sans JP")
             .font_family("Noto Sans SC")
-            .flex()
-            .flex_col()
             .overflow_hidden()
-            .child(top)
-            .child(nav)
             .child(main_content)
-            .child(bottom)
+            .child(
+                div()
+                    .absolute()
+                    .left(px(0.))
+                    .top(px(0.))
+                    .right(px(0.))
+                    .backdrop_blur_xl()
+                    .backdrop_saturation(1.8)
+                    .child(top)
+                    .child(nav),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left(px(0.))
+                    .right(px(0.))
+                    .bottom(px(0.))
+                    .child(bottom),
+            )
     }
 }
 

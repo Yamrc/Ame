@@ -9,7 +9,7 @@ use crate::component::theme;
 use crate::component::{
     button,
     icon::{self, IconName},
-    slider,
+    page_scaffold, slider,
 };
 use crate::entity::player::PlaybackMode;
 use crate::util::url::image_resize_url;
@@ -71,11 +71,13 @@ pub fn bottom_bar(
     div()
         .flex_none()
         .w_full()
-        .h(px(64.))
+        .h(px(page_scaffold::BOTTOM_BAR_HEIGHT_PX))
         .bg(rgba(theme::with_alpha(
             theme::COLOR_NAVBAR_BG_DARK,
             theme::ALPHA_NAVBAR_BG,
         )))
+        .backdrop_blur_xl()
+        .backdrop_saturation(1.8)
         .flex()
         .flex_col()
         .gap_0()

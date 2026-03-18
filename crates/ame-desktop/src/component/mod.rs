@@ -5,6 +5,7 @@ pub mod cover_card;
 pub mod icon;
 pub mod input;
 pub mod nav_bar;
+pub mod page_scaffold;
 pub mod playlist_item;
 pub mod scroll;
 pub mod short_track_item;

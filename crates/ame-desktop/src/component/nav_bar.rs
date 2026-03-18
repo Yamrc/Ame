@@ -4,7 +4,7 @@ use crate::animation::{Linear, TransitionExt};
 use crate::component::{
     button,
     icon::{self, IconName},
-    input, theme,
+    input, page_scaffold, theme,
 };
 use nekowg::{
     AnyElement, App, Div, Entity, FontWeight, MouseButton, SharedString, div, img, prelude::*, px,
@@ -89,7 +89,7 @@ pub fn nav_bar(left: AnyElement, center: AnyElement, right: AnyElement) -> Div {
     div()
         .flex_none()
         .w_full()
-        .h(px(48.))
+        .h(px(page_scaffold::NAV_BAR_HEIGHT_PX))
         .px(relative(0.1))
         .pb(px(1.))
         .grid()

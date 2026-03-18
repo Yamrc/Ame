@@ -64,62 +64,55 @@ impl AssetSource for Assets {
 
 fn main() {
     init_logger();
-    application().with_assets(Assets).run(|cx: &mut App| {
-        let http_client = match gpui_http::build_http_client("ame-app/0.0.6") {
-            Ok(client) => Some(client),
-            Err(err) => {
-                error!("set http client failed: {err}");
-                None
-            }
-        };
-        if let Some(http_client) = http_client {
-            cx.set_http_client(http_client);
-        }
+    application()
+        .with_assets(Assets)
+        .with_http_client(gpui_http::build_http_client("ame/1").expect("set http client failed"))
+        .with_quit_mode(nekowg::QuitMode::Explicit)
+        .run(|cx: &mut App| {
+            router::init(cx);
+            tray::init(cx);
+            component::input::init_keybindings(cx);
+            cx.bind_keys([
+                KeyBinding::new("space", HotkeyTogglePlay, Some("!AmeInput")),
+                KeyBinding::new("ctrl-right", HotkeyNextTrack, None),
+                KeyBinding::new("ctrl-left", HotkeyPrevTrack, None),
+                KeyBinding::new("ctrl-1", HotkeyHome, None),
+                KeyBinding::new("ctrl-2", HotkeyDiscover, None),
+                KeyBinding::new("ctrl-3", HotkeyLibrary, None),
+                KeyBinding::new("ctrl-f", HotkeySearch, None),
+                KeyBinding::new("ctrl-j", HotkeyQueue, None),
+                KeyBinding::new("ctrl-comma", HotkeySettings, None),
+                KeyBinding::new("cmd-q", HotkeyQuit, None),
+            ]);
 
-        router::init(cx);
-        tray::init(cx);
-        component::input::init_keybindings(cx);
-        cx.bind_keys([
-            KeyBinding::new("space", HotkeyTogglePlay, Some("!AmeInput")),
-            KeyBinding::new("ctrl-right", HotkeyNextTrack, None),
-            KeyBinding::new("ctrl-left", HotkeyPrevTrack, None),
-            KeyBinding::new("ctrl-1", HotkeyHome, None),
-            KeyBinding::new("ctrl-2", HotkeyDiscover, None),
-            KeyBinding::new("ctrl-3", HotkeyLibrary, None),
-            KeyBinding::new("ctrl-f", HotkeySearch, None),
-            KeyBinding::new("ctrl-j", HotkeyQueue, None),
-            KeyBinding::new("ctrl-comma", HotkeySettings, None),
-            KeyBinding::new("cmd-q", HotkeyQuit, None),
-        ]);
+            let bounds = Bounds::centered(None, size(px(1440.), px(840.)), cx);
+            let options = WindowOptions {
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Ame".into()),
+                    appears_transparent: true,
+                    traffic_light_position: None,
+                }),
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                window_min_size: Some(size(px(1080.), px(720.))),
+                ..Default::default()
+            };
 
-        let bounds = Bounds::centered(None, size(px(1440.), px(840.)), cx);
-        let options = WindowOptions {
-            titlebar: Some(TitlebarOptions {
-                title: Some("Ame".into()),
-                appears_transparent: true,
-                traffic_light_position: None,
-            }),
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            window_min_size: Some(size(px(1080.), px(720.))),
-            ..Default::default()
-        };
-
-        match cx.open_window(options, |window, cx| {
-            let root = cx.new(|cx| view::root::RootView::new(window, cx));
-            tray::set_main_root(cx, root.downgrade());
-            let weak = root.downgrade();
-            window.on_window_should_close(cx, move |window, cx| {
-                let _ = weak.update(cx, |root: &mut view::root::RootView, cx| {
-                    root.request_window_close(window, cx);
+            match cx.open_window(options, |window, cx| {
+                let root = cx.new(|cx| view::root::RootView::new(window, cx));
+                tray::set_main_root(cx, root.downgrade());
+                let weak = root.downgrade();
+                window.on_window_should_close(cx, move |window, cx| {
+                    let _ = weak.update(cx, |root: &mut view::root::RootView, cx| {
+                        root.request_window_close(window, cx);
+                    });
+                    false
                 });
-                false
-            });
-            root
-        }) {
-            Ok(window) => tray::set_main_window(cx, window),
-            Err(err) => error!("open window failed: {err}"),
-        }
+                root
+            }) {
+                Ok(window) => tray::set_main_window(cx, window),
+                Err(err) => error!("open window failed: {err}"),
+            }
 
-        cx.activate(true);
-    });
+            cx.activate(true);
+        });
 }
