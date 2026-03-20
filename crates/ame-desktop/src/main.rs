@@ -3,17 +3,15 @@
     windows_subsystem = "windows"
 )]
 
-mod action;
 mod animation;
+mod app;
 mod component;
-mod entity;
+mod domain;
 mod gpui_http;
-mod router;
-mod tray;
+mod page;
 mod util;
-mod view;
 
-use crate::action::ui_actions::{
+use crate::app::hotkeys::{
     HotkeyDiscover, HotkeyHome, HotkeyLibrary, HotkeyNextTrack, HotkeyPrevTrack, HotkeyQueue,
     HotkeyQuit, HotkeySearch, HotkeySettings, HotkeyTogglePlay,
 };
@@ -26,7 +24,7 @@ use nekowg::{
 use nekowg_platform::application;
 use rust_embed::RustEmbed;
 use std::{borrow::Cow, collections::HashSet};
-use tracing::error;
+use tracing::warn;
 
 #[derive(RustEmbed)]
 #[folder = "../../resouses"]
@@ -69,8 +67,8 @@ fn main() {
         .with_http_client(gpui_http::build_http_client("ame/1").expect("set http client failed"))
         .with_quit_mode(nekowg::QuitMode::Explicit)
         .run(|cx: &mut App| {
-            router::init(cx);
-            tray::init(cx);
+            app::router::init(cx);
+            app::tray::init(cx);
             component::input::init_keybindings(cx);
             cx.bind_keys([
                 KeyBinding::new("space", HotkeyTogglePlay, Some("!AmeInput")),
@@ -97,21 +95,23 @@ fn main() {
                 ..Default::default()
             };
 
-            match cx.open_window(options, |window, cx| {
-                let root = cx.new(|cx| view::root::RootView::new(window, cx));
-                tray::set_main_root(cx, root.downgrade());
-                let weak = root.downgrade();
-                window.on_window_should_close(cx, move |window, cx| {
-                    let _ = weak.update(cx, |root: &mut view::root::RootView, cx| {
-                        root.request_window_close(window, cx);
+            let window = cx
+                .open_window(options, |window, cx| {
+                    let root = cx.new(|cx| app::root::RootView::new(window, cx));
+                    app::tray::set_main_root(cx, root.downgrade());
+                    let weak = root.downgrade();
+                    window.on_window_should_close(cx, move |window, cx| {
+                        if let Err(err) = weak.update(cx, |root: &mut app::root::RootView, cx| {
+                            root.request_window_close(window, cx);
+                        }) {
+                            warn!("window close callback update failed: {err}");
+                        }
+                        false
                     });
-                    false
-                });
-                root
-            }) {
-                Ok(window) => tray::set_main_window(cx, window),
-                Err(err) => error!("open window failed: {err}"),
-            }
+                    root
+                })
+                .expect("Failed to open default windows");
+            app::tray::set_main_window(cx, window);
 
             cx.activate(true);
         });

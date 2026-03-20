@@ -6,6 +6,7 @@ use dashmap::DashMap;
 use nekowg::*;
 use parking_lot::RwLock;
 use smol::channel::{self, Receiver, Sender};
+use tracing::warn;
 
 use super::animation::{AnimationPriority, Event};
 use super::interpolate::State;
@@ -142,7 +143,9 @@ impl TransitionRegistry {
             },
         );
 
-        TRANSITION_REGISTRY.wakeup_tx.try_send(()).ok();
+        if let Err(err) = TRANSITION_REGISTRY.wakeup_tx.try_send(()) {
+            warn!("transition wakeup send failed: {err}");
+        }
     }
 
     pub async fn animation_tick(cx: &mut AsyncApp) {
@@ -233,7 +236,10 @@ impl TransitionRegistry {
             });
 
             if registry.active_animations.is_empty() {
-                registry.wakeup_rx.recv().await.ok();
+                if let Err(err) = registry.wakeup_rx.recv().await {
+                    warn!("transition wakeup receive failed: {err}");
+                    break;
+                }
             } else {
                 smol::Timer::after(frame_duration).await;
             }

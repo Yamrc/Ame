@@ -69,7 +69,7 @@ pub struct TrackUrlResponse {
 
 pub struct TrackUrlRequest {
     pub ids: Vec<i64>,
-    pub level: String,
+    pub level: String, // TODO: enum化
 }
 
 impl TrackUrlRequest {

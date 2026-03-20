@@ -1,0 +1,9 @@
+pub const KEY_PLAYER_VOLUME: &str = "player.volume";
+pub const KEY_PLAYER_MODE: &str = "player.mode";
+pub const KEY_PLAYER_QUEUE: &str = "player.queue";
+pub const KEY_PLAYER_CURRENT_INDEX: &str = "player.current_index";
+pub const KEY_PLAYER_POSITION_MS: &str = "player.position_ms";
+pub const KEY_PLAYER_DURATION_MS: &str = "player.duration_ms";
+pub const KEY_PLAYER_WAS_PLAYING: &str = "player.was_playing";
+pub const KEY_WINDOW_CLOSE_BEHAVIOR: &str = "window.close_behavior";
+pub const KEY_HOME_ARTIST_LANGUAGE: &str = "home.artist_language";
