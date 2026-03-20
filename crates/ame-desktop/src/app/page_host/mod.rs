@@ -11,7 +11,7 @@ use nekowg::{Context, Pixels, ScrollHandle, px};
 use crate::app::runtime::AppRuntime;
 
 use self::key::PageKey;
-use self::slot::{FrozenPage, PageInstance};
+use self::slot::{FrozenEntry, PageInstance};
 
 const FROZEN_TTL: Duration = Duration::from_secs(300);
 
@@ -19,7 +19,7 @@ pub struct PageHostView {
     runtime: AppRuntime,
     page_scroll_handle: ScrollHandle,
     active: Option<PageInstance>,
-    frozen: HashMap<PageKey, FrozenPage>,
+    frozen: HashMap<PageKey, FrozenEntry>,
     pending_scroll_restore: Option<Pixels>,
 }
 

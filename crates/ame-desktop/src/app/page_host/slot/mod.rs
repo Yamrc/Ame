@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use nekowg::{Entity, Pixels};
 
+use crate::app::page::PageSnapshot;
 use crate::page::{daily_tracks, discover, home, library, login, next, playlist, search, settings};
 
 use super::key::PageKey;
@@ -36,4 +37,15 @@ pub(super) struct FrozenPage {
     pub(super) slot: PageSlot,
     pub(super) destroy_at: Instant,
     pub(super) scroll_offset: Pixels,
+}
+
+pub(super) struct FrozenSnapshot {
+    pub(super) snapshot: Option<PageSnapshot>,
+    pub(super) destroy_at: Instant,
+    pub(super) scroll_offset: Pixels,
+}
+
+pub(super) enum FrozenEntry {
+    KeepAlive(FrozenPage),
+    Snapshot(Box<FrozenSnapshot>),
 }

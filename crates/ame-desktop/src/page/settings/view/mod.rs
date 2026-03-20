@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use nekowg::{Context, Render, Subscription, Window, prelude::*};
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
 use crate::page::settings::models::SettingsViewModel;
 use crate::page::settings::sections::{
@@ -50,4 +50,8 @@ impl Render for SettingsPageView {
     }
 }
 
-impl PageLifecycle for SettingsPageView {}
+impl PageLifecycle for SettingsPageView {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::KeepAlive
+    }
+}

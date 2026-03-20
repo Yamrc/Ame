@@ -1,17 +1,20 @@
 mod actions;
 
 use std::rc::Rc;
+use std::sync::Arc;
 
-use nekowg::{Context, Render, ScrollHandle, Subscription, Window, prelude::*};
+use nekowg::{Context, Render, ScrollHandle, Subscription, Window, prelude::*, px};
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
-use crate::page::next::models::NextPageSnapshot;
-use crate::page::next::sections::{QueueActionHandler, QueueItemActionHandler, render_next_page};
+use crate::page::next::sections::{
+    NextQueueRenderCache, QueueActionHandler, QueueItemActionHandler, render_next_page,
+};
 
 pub struct NextPageView {
     runtime: AppRuntime,
     page_scroll_handle: ScrollHandle,
+    heavy_resources: NextQueueRenderCache,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -21,23 +24,47 @@ impl NextPageView {
         page_scroll_handle: ScrollHandle,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut subscriptions = Vec::new();
-        subscriptions.push(cx.observe(&runtime.player, |_, _, cx| {
-            cx.notify();
-        }));
-        Self {
+        let mut view = Self {
             runtime,
             page_scroll_handle,
-            _subscriptions: subscriptions,
-        }
+            heavy_resources: NextQueueRenderCache {
+                current_track: None,
+                upcoming: Arc::new(Vec::new()),
+                heights: Arc::new(Vec::new()),
+            },
+            _subscriptions: Vec::new(),
+        };
+        let mut subscriptions = Vec::new();
+        subscriptions.push(cx.observe(&view.runtime.player, |this, _, cx| {
+            this.refresh_heavy_resources(cx);
+            cx.notify();
+        }));
+        view._subscriptions = subscriptions;
+        view.refresh_heavy_resources(cx);
+        view
+    }
+
+    fn refresh_heavy_resources(&mut self, cx: &mut Context<Self>) {
+        let player = self.runtime.player.read(cx);
+        let upcoming = player
+            .queue
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| Some(*index) > player.current_index)
+            .map(|(_, item)| item.clone())
+            .collect::<Vec<_>>();
+        self.heavy_resources = NextQueueRenderCache {
+            current_track: player
+                .current_index
+                .and_then(|index| player.queue.get(index).cloned()),
+            heights: Arc::new(vec![px(60.); upcoming.len()]),
+            upcoming: Arc::new(upcoming),
+        };
     }
 }
 
 impl Render for NextPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let player_snapshot = self.runtime.player.read(cx).clone();
-        let snapshot =
-            NextPageSnapshot::from_queue(&player_snapshot.queue, player_snapshot.current_index);
         let page = cx.entity();
 
         let on_play_item: QueueItemActionHandler = {
@@ -60,7 +87,7 @@ impl Render for NextPageView {
         };
 
         render_next_page(
-            snapshot,
+            &self.heavy_resources,
             &self.page_scroll_handle,
             on_play_item,
             on_remove_item,
@@ -69,4 +96,16 @@ impl Render for NextPageView {
     }
 }
 
-impl PageLifecycle for NextPageView {}
+impl PageLifecycle for NextPageView {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::SnapshotOnly
+    }
+
+    fn release_view_resources(&mut self, _cx: &mut Context<Self>) {
+        self.heavy_resources = NextQueueRenderCache {
+            current_track: None,
+            upcoming: Arc::new(Vec::new()),
+            heights: Arc::new(Vec::new()),
+        };
+    }
+}

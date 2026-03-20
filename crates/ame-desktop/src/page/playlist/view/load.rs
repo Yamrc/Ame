@@ -1,4 +1,5 @@
 use nekowg::Context;
+use tracing::debug;
 
 use crate::domain::session as auth;
 use crate::page::state::DataSource;
@@ -89,16 +90,18 @@ impl PlaylistPageView {
             cx.notify();
         });
 
-        let page = cx.entity();
+        let page = cx.entity().downgrade();
         let playlist_id = self.playlist_id;
         cx.spawn(async move |_, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { fetch_playlist_page_payload(playlist_id, &cookie) })
                 .await;
-            page.update(cx, |this, cx| {
+            if let Err(err) = page.update(cx, |this, cx| {
                 this.apply_playlist_result(session_key, result, cx);
-            });
+            }) {
+                debug!("playlist page load dropped before apply: {err}");
+            }
         })
         .detach();
     }

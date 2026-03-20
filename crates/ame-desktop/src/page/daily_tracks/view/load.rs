@@ -1,4 +1,5 @@
 use nekowg::Context;
+use tracing::debug;
 
 use crate::domain::library::DailyTrackItem;
 use crate::domain::session as auth;
@@ -64,13 +65,15 @@ impl DailyTracksPageView {
             cx.notify();
         });
 
-        let page = cx.entity();
+        let page = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { fetch_daily_tracks_payload(&cookie) })
                 .await;
-            page.update(cx, |this, cx| this.apply_load_result(result, cx));
+            if let Err(err) = page.update(cx, |this, cx| this.apply_load_result(result, cx)) {
+                debug!("daily tracks page load dropped before apply: {err}");
+            }
         })
         .detach();
     }

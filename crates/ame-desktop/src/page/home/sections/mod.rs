@@ -12,7 +12,7 @@ use crate::component::{
     section,
 };
 use crate::domain::library as library_actions;
-use crate::page::home::models::{HomePageSnapshot, HomePlaylistCard};
+use crate::page::home::models::{HomeArtistCard, HomePlaylistCard};
 
 use self::featured::{daily_featured_card, fm_featured_card};
 
@@ -21,75 +21,93 @@ pub(crate) type PlayDailyHandler = Arc<dyn Fn(Option<i64>, &mut App)>;
 pub(crate) type OpenFmHandler = Arc<dyn Fn(Option<library_actions::FmTrackItem>, &mut App)>;
 pub(crate) type OpenPlaylistHandler = Arc<dyn Fn(i64, &mut App)>;
 
+pub(crate) struct HomeSectionsRender<'a> {
+    pub loading: bool,
+    pub error: Option<&'a str>,
+    pub daily_card: &'a HomePlaylistCard,
+    pub daily_first_track_id: Option<i64>,
+    pub fm_card: &'a HomePlaylistCard,
+    pub fm_track: Option<&'a library_actions::FmTrackItem>,
+    pub playlists: &'a [HomePlaylistCard],
+    pub artists: &'a [HomeArtistCard],
+    pub albums: &'a [HomePlaylistCard],
+    pub toplists: &'a [HomePlaylistCard],
+}
+
 pub(crate) fn render_home_sections(
-    snapshot: HomePageSnapshot,
+    view: HomeSectionsRender<'_>,
     on_open_daily: OpenDailyHandler,
     on_play_daily: PlayDailyHandler,
     on_open_fm: OpenFmHandler,
     on_open_playlist: OpenPlaylistHandler,
 ) -> AnyElement {
+    let daily_first_track_id = view.daily_first_track_id;
+    let fm_track = view.fm_track.cloned();
     let featured_rows = vec![
         {
             let on_open_daily = on_open_daily.clone();
             let on_play_daily = on_play_daily.clone();
             daily_featured_card(
-                snapshot.daily_card,
+                view.daily_card.clone(),
                 move |cx| on_open_daily(cx),
-                move |cx| on_play_daily(snapshot.daily_first_track_id, cx),
+                move |cx| on_play_daily(daily_first_track_id, cx),
             )
         },
         {
             let on_open_fm = on_open_fm.clone();
-            fm_featured_card(snapshot.fm_card, move |cx| {
-                on_open_fm(snapshot.fm_track.clone(), cx)
+            fm_featured_card(view.fm_card.clone(), move |cx| {
+                on_open_fm(fm_track.clone(), cx)
             })
         },
     ];
-    let playlist_rows = snapshot
+    let playlist_rows = view
         .playlists
-        .into_iter()
+        .iter()
         .map(|item| render_playlist_card(item, on_open_playlist.clone()))
         .collect();
-    let artist_rows = snapshot
+    let artist_rows = view
         .artists
-        .into_iter()
+        .iter()
         .map(|artist| {
             cover_card::render_artist_card(
                 ArtistCoverCardProps {
-                    name: artist.name,
-                    cover_url: artist.cover_url,
+                    name: artist.name.clone(),
+                    cover_url: artist.cover_url.clone(),
                 },
                 CoverCardActions::default(),
             )
         })
         .collect();
-    let album_rows = snapshot
+    let album_rows = view
         .albums
-        .into_iter()
+        .iter()
         .map(|item| {
             playlist_card::render(
-                PlaylistCardProps::standard(item.name, item.subtitle, item.cover_url),
+                PlaylistCardProps::standard(
+                    item.name.clone(),
+                    item.subtitle.clone(),
+                    item.cover_url.clone(),
+                ),
                 PlaylistCardActions::default(),
             )
         })
         .collect();
-    let toplist_rows = snapshot
+    let toplist_rows = view
         .toplists
-        .into_iter()
+        .iter()
         .map(|item| {
             playlist_card::render(
-                PlaylistCardProps::standard(item.name, item.subtitle, item.cover_url),
+                PlaylistCardProps::standard(
+                    item.name.clone(),
+                    item.subtitle.clone(),
+                    item.cover_url.clone(),
+                ),
                 PlaylistCardActions::default(),
             )
         })
         .collect();
 
-    let status = page::status_banner(
-        snapshot.loading,
-        snapshot.error.as_deref(),
-        "加载中...",
-        "加载失败",
-    );
+    let status = page::status_banner(view.loading, view.error, "加载中...", "加载失败");
 
     div()
         .w_full()
@@ -116,12 +134,16 @@ pub(crate) fn render_home_sections(
 }
 
 fn render_playlist_card(
-    item: HomePlaylistCard,
+    item: &HomePlaylistCard,
     on_open_playlist: OpenPlaylistHandler,
 ) -> AnyElement {
     let playlist_id = item.id;
     playlist_card::render(
-        PlaylistCardProps::standard(item.name, item.subtitle, item.cover_url),
+        PlaylistCardProps::standard(
+            item.name.clone(),
+            item.subtitle.clone(),
+            item.cover_url.clone(),
+        ),
         PlaylistCardActions {
             on_open: Some(Rc::new(move |cx| on_open_playlist(playlist_id, cx))),
         },

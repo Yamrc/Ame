@@ -1,6 +1,5 @@
 use crate::domain::library::{DailyTrackItem, PlaylistTrackItem};
 use crate::domain::player;
-use crate::page::state::DataState;
 
 pub type SessionLoadKey = (Option<i64>, bool);
 
@@ -64,29 +63,4 @@ pub struct PlaylistPage {
     pub creator_name: String,
     pub track_count: u32,
     pub tracks: Vec<PlaylistTrackRow>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PlaylistPageSnapshot {
-    pub playlist_id: i64,
-    pub loading: bool,
-    pub error: Option<String>,
-    pub playlist: Option<PlaylistPage>,
-    pub current_playing_track_id: Option<i64>,
-}
-
-impl PlaylistPageSnapshot {
-    pub fn from_state(
-        playlist_id: i64,
-        state: &DataState<Option<PlaylistPage>>,
-        current_playing_track_id: Option<i64>,
-    ) -> Self {
-        Self {
-            playlist_id,
-            loading: state.loading,
-            error: state.error.clone(),
-            playlist: state.data.clone(),
-            current_playing_track_id,
-        }
-    }
 }

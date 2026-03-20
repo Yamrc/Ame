@@ -1,6 +1,7 @@
 use nekowg::{AnyElement, AppContext, IntoElement};
+use tracing::error;
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy, PageSnapshot};
 
 use super::PageSlot;
 
@@ -35,18 +36,78 @@ impl PageSlot {
         }
     }
 
-    pub(in crate::app::page_host) fn on_frozen<C: AppContext>(&self, cx: &mut C) {
+    pub(in crate::app::page_host) fn snapshot_policy<C: AppContext>(
+        &self,
+        cx: &mut C,
+    ) -> PageRetentionPolicy {
         match self {
-            Self::Home(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Discover(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Library(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Search(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::DailyTracks(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Next(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Playlist(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Settings(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Login(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
-            Self::Unknown(view) => view.update(cx, |this, cx| this.on_frozen(cx)),
+            Self::Home(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Discover(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Library(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Search(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::DailyTracks(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Next(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Playlist(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Settings(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Login(view) => view.update(cx, |this, _| this.snapshot_policy()),
+            Self::Unknown(view) => view.update(cx, |this, _| this.snapshot_policy()),
+        }
+    }
+
+    pub(in crate::app::page_host) fn capture_snapshot<C: AppContext>(
+        &self,
+        cx: &mut C,
+    ) -> Option<PageSnapshot> {
+        match self {
+            Self::Home(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Discover(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Library(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Search(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::DailyTracks(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Next(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Playlist(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Settings(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Login(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+            Self::Unknown(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
+        }
+    }
+
+    pub(in crate::app::page_host) fn restore_snapshot<C: AppContext>(
+        &self,
+        snapshot: PageSnapshot,
+        cx: &mut C,
+    ) {
+        let result = match self {
+            Self::Home(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Discover(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Library(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Search(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::DailyTracks(view) => {
+                view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx))
+            }
+            Self::Next(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Playlist(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Settings(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Login(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+            Self::Unknown(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
+        };
+        if let Err(err) = result {
+            error!("恢复页面快照失败: {err}");
+        }
+    }
+
+    pub(in crate::app::page_host) fn release_view_resources<C: AppContext>(&self, cx: &mut C) {
+        match self {
+            Self::Home(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Discover(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Library(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Search(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::DailyTracks(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Next(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Playlist(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Settings(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Login(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
+            Self::Unknown(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
         }
     }
 

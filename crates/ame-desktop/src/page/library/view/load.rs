@@ -1,4 +1,5 @@
 use nekowg::Context;
+use tracing::debug;
 
 use crate::domain::session as auth_actions;
 use crate::page::library::models::LibraryLoadResult;
@@ -79,16 +80,18 @@ impl LibraryPageView {
             cx.notify();
         });
 
-        let page = cx.entity();
+        let page = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { fetch_library_payload(user_id, &cookie) })
                 .await;
 
-            page.update(cx, |this, cx| {
+            if let Err(err) = page.update(cx, |this, cx| {
                 this.apply_loaded_library(user_id, result, cx);
-            });
+            }) {
+                debug!("library page load dropped before apply: {err}");
+            }
         })
         .detach();
     }

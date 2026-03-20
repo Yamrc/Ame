@@ -3,48 +3,63 @@ use std::sync::Arc;
 use nekowg::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
 
 use crate::component::{page, theme};
-use crate::page::daily_tracks::models::DailyTracksPageSnapshot;
+use crate::domain::library::DailyTrackItem;
 use crate::page::playlist::{self, PlaylistTrackRow};
+use crate::page::state::DataState;
 
 pub(crate) type TrackActionHandler = Arc<dyn Fn(PlaylistTrackRow, &mut App)>;
 pub(crate) type ReplaceDailyQueueHandler = Arc<dyn Fn(Option<i64>, &mut App)>;
 
+pub(crate) struct DailyTracksRenderCache {
+    pub rows: Arc<Vec<PlaylistTrackRow>>,
+    pub first_track_id: Option<i64>,
+    pub current_playing_track_id: Option<i64>,
+}
+
 pub(crate) fn render_daily_tracks_page(
-    snapshot: DailyTracksPageSnapshot,
+    state: &DataState<Vec<DailyTrackItem>>,
+    render_cache: Option<&DailyTracksRenderCache>,
     on_play_track: TrackActionHandler,
     on_enqueue_track: TrackActionHandler,
     on_replace_queue: ReplaceDailyQueueHandler,
 ) -> AnyElement {
-    let rows = snapshot
-        .tracks
-        .into_iter()
-        .enumerate()
-        .map(|(index, track)| {
-            let is_playing = snapshot.current_playing_track_id == Some(track.id);
-            let play_track = track.clone();
-            let queue_track = track.clone();
-            let on_play_track = on_play_track.clone();
-            let on_enqueue_track = on_enqueue_track.clone();
-            playlist::track_row(
-                format!("daily-tracks:row:{index}:track:{}", track.id),
-                track,
-                is_playing,
-                move |cx| on_play_track(play_track.clone(), cx),
-                move |cx| on_enqueue_track(queue_track.clone(), cx),
-            )
+    let rows = render_cache
+        .map(|cache| {
+            cache
+                .rows
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, track)| {
+                    let is_playing = cache.current_playing_track_id == Some(track.id);
+                    let play_track = track.clone();
+                    let queue_track = track.clone();
+                    let on_play_track = on_play_track.clone();
+                    let on_enqueue_track = on_enqueue_track.clone();
+                    playlist::track_row(
+                        format!("daily-tracks:row:{index}:track:{}", track.id),
+                        track,
+                        is_playing,
+                        move |cx| on_play_track(play_track.clone(), cx),
+                        move |cx| on_enqueue_track(queue_track.clone(), cx),
+                    )
+                })
+                .collect::<Vec<_>>()
         })
-        .collect::<Vec<_>>();
-    let action = snapshot.first_track_id.map(|track_id| {
-        let on_replace_queue = on_replace_queue.clone();
-        crate::component::button::primary_pill("替换队列并播放")
-            .on_mouse_down(nekowg::MouseButton::Left, move |_, _, cx| {
-                on_replace_queue(Some(track_id), cx);
-            })
-            .into_any_element()
-    });
+        .unwrap_or_default();
+    let action = render_cache
+        .and_then(|cache| cache.first_track_id)
+        .map(|track_id| {
+            let on_replace_queue = on_replace_queue.clone();
+            crate::component::button::primary_pill("替换队列并播放")
+                .on_mouse_down(nekowg::MouseButton::Left, move |_, _, cx| {
+                    on_replace_queue(Some(track_id), cx);
+                })
+                .into_any_element()
+        });
     let status = page::status_banner(
-        snapshot.loading,
-        snapshot.error.as_deref(),
+        state.loading,
+        state.error.as_deref(),
         "加载中...",
         "加载失败",
     );

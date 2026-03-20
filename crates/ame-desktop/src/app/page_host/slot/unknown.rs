@@ -1,12 +1,16 @@
 use nekowg::{Context, IntoElement, Render, Window, prelude::*};
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 
 pub(in crate::app::page_host) struct UnknownPageView {
     pub(in crate::app::page_host) path: String,
 }
 
-impl PageLifecycle for UnknownPageView {}
+impl PageLifecycle for UnknownPageView {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::Discard
+    }
+}
 
 impl Render for UnknownPageView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {

@@ -14,7 +14,9 @@ use crate::component::{
 };
 
 use super::state::{SearchCollectionState, SearchPageState};
-use super::types::{SearchOverview, SearchRouteType, SearchSong};
+use super::types::{
+    SearchAlbum, SearchArtist, SearchOverview, SearchPlaylist, SearchRouteType, SearchSong,
+};
 
 const PLAYLIST_GRID_COLUMNS: usize = 6;
 const SHORT_TRACK_COLUMNS: usize = 4;
@@ -63,6 +65,16 @@ fn render_track_row(
     )
 }
 
+fn render_track_row_ref(
+    state_id: impl Into<SharedString>,
+    song: &SearchSong,
+    is_playing: bool,
+    on_play: impl Fn(&mut App) + 'static,
+    on_enqueue: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    render_track_row(state_id, song.clone(), is_playing, on_play, on_enqueue)
+}
+
 fn render_short_track_item(
     state_id: impl Into<SharedString>,
     song: SearchSong,
@@ -85,6 +97,15 @@ fn render_short_track_item(
     )
 }
 
+fn render_short_track_item_ref(
+    state_id: impl Into<SharedString>,
+    song: &SearchSong,
+    on_play: impl Fn(&mut App) + 'static,
+    on_enqueue: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    render_short_track_item(state_id, song.clone(), on_play, on_enqueue)
+}
+
 fn render_artist_card(name: impl Into<String>, cover_url: Option<String>) -> AnyElement {
     cover_card::render_artist_card(
         ArtistCoverCardProps {
@@ -93,6 +114,10 @@ fn render_artist_card(name: impl Into<String>, cover_url: Option<String>) -> Any
         },
         CoverCardActions::default(),
     )
+}
+
+fn render_artist_card_ref(artist: &SearchArtist) -> AnyElement {
+    render_artist_card(artist.name.clone(), artist.cover_url.clone())
 }
 
 fn render_playlist_card(
@@ -104,5 +129,26 @@ fn render_playlist_card(
     playlist_card::render(
         PlaylistCardProps::standard(name, subtitle, cover_url),
         PlaylistCardActions { on_open },
+    )
+}
+
+fn render_album_card_ref(album: &SearchAlbum) -> AnyElement {
+    render_playlist_card(
+        album.name.clone(),
+        album.artist_name.clone(),
+        album.cover_url.clone(),
+        None,
+    )
+}
+
+fn render_playlist_card_ref(
+    playlist: &SearchPlaylist,
+    on_open: Option<CardOpenHandler>,
+) -> AnyElement {
+    render_playlist_card(
+        playlist.name.clone(),
+        playlist.creator_name.clone(),
+        playlist.cover_url.clone(),
+        on_open,
     )
 }

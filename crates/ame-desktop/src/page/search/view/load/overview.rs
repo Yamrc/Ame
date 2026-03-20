@@ -1,4 +1,5 @@
 use nekowg::Context;
+use tracing::debug;
 
 use crate::page::search::fetch::fetch_search_overview_payload;
 
@@ -29,7 +30,7 @@ pub(in crate::page::search::view) fn ensure_overview_loaded(
         cx.notify();
     });
 
-    let page = cx.entity();
+    let page = cx.entity().downgrade();
     let request_keyword = keyword.clone();
     let request_session_key = session_load_key(&this.runtime, cx);
     cx.spawn(async move |_, cx| {
@@ -39,9 +40,11 @@ pub(in crate::page::search::view) fn ensure_overview_loaded(
                 async move { fetch_search_overview_payload(&request_keyword, cookie.as_deref()) },
             )
             .await;
-        page.update(cx, |this, cx| {
+        if let Err(err) = page.update(cx, |this, cx| {
             this.apply_overview_result(keyword, request_session_key, result, cx)
-        });
+        }) {
+            debug!("search overview load dropped before apply: {err}");
+        }
     })
     .detach();
 }

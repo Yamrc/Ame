@@ -9,25 +9,31 @@ use nekowg::{
 };
 
 use crate::component::{button, theme, virtual_list};
-use crate::page::next::models::NextPageSnapshot;
+use crate::domain::player::QueueItem;
 
 use self::track::queue_track_row;
 
 pub(crate) type QueueItemActionHandler = Rc<dyn Fn(i64, &mut App)>;
 pub(crate) type QueueActionHandler = Rc<dyn Fn(&mut App)>;
 
+pub(crate) struct NextQueueRenderCache {
+    pub current_track: Option<QueueItem>,
+    pub upcoming: Arc<Vec<QueueItem>>,
+    pub heights: Arc<Vec<nekowg::Pixels>>,
+}
+
 pub(crate) fn render_next_page(
-    snapshot: NextPageSnapshot,
+    render_cache: &NextQueueRenderCache,
     page_scroll_handle: &ScrollHandle,
     on_play_item: QueueItemActionHandler,
     on_remove_item: QueueItemActionHandler,
     on_clear_queue: QueueActionHandler,
 ) -> AnyElement {
-    let queue_list = if snapshot.upcoming.is_empty() {
+    let queue_list = if render_cache.upcoming.is_empty() {
         None
     } else {
-        let upcoming = Arc::new(snapshot.upcoming);
-        let heights = Arc::new(vec![px(60.); upcoming.len()]);
+        let upcoming = render_cache.upcoming.clone();
+        let heights = render_cache.heights.clone();
         let on_play_item = on_play_item.clone();
         let on_remove_item = on_remove_item.clone();
         let list = virtual_list::v_virtual_list(
@@ -59,7 +65,7 @@ pub(crate) fn render_next_page(
         Some(list.into_any_element())
     };
 
-    let clear_button = if snapshot.current_track.is_some() || queue_list.is_some() {
+    let clear_button = if render_cache.current_track.is_some() || queue_list.is_some() {
         let on_clear_queue = on_clear_queue.clone();
         Some(
             button::pill_base("清空队列")
@@ -70,7 +76,7 @@ pub(crate) fn render_next_page(
         None
     };
 
-    let now_playing = if let Some(track) = snapshot.current_track {
+    let now_playing = if let Some(track) = render_cache.current_track.clone() {
         queue_track_row(
             format!("next-now-playing:track:{}", track.id),
             track,

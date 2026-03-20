@@ -1,15 +1,17 @@
 mod load;
 
 use std::rc::Rc;
+use std::sync::Arc;
 
-use nekowg::{AppContext, Context, Entity, Render, ScrollHandle, Subscription, Window, prelude::*};
+use nekowg::{
+    AppContext, Context, Entity, Render, ScrollHandle, Subscription, Window, prelude::*, px,
+};
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
 use crate::domain::player;
-use crate::page::playlist::models::PlaylistPageSnapshot;
 use crate::page::playlist::sections::{
-    ReplaceQueueHandler, TrackActionHandler, render_playlist_page,
+    PlaylistListRenderCache, ReplaceQueueHandler, TrackActionHandler, render_playlist_page,
 };
 use crate::page::state::freeze_page_state;
 
@@ -21,6 +23,7 @@ pub struct PlaylistPageView {
     playlist_id: i64,
     state: Entity<PlaylistPageState>,
     last_session_key: super::models::SessionLoadKey,
+    heavy_resources: Option<PlaylistListRenderCache>,
     active: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -34,25 +37,31 @@ impl PlaylistPageView {
     ) -> Self {
         let state = cx.new(|_| PlaylistPageState::default());
         let last_session_key = super::service::session_load_key(&runtime, cx);
-        let mut subscriptions = Vec::new();
-        subscriptions.push(cx.observe(&state, |_, _, cx| {
-            cx.notify();
-        }));
-        subscriptions.push(cx.observe(&runtime.session, |this, _, cx| {
-            this.handle_session_change(cx);
-        }));
-        subscriptions.push(cx.observe(&runtime.player, |_, _, cx| {
-            cx.notify();
-        }));
-        Self {
+        let mut view = Self {
             runtime,
             page_scroll_handle,
             playlist_id,
             state,
             last_session_key,
+            heavy_resources: None,
             active: false,
-            _subscriptions: subscriptions,
-        }
+            _subscriptions: Vec::new(),
+        };
+        let mut subscriptions = Vec::new();
+        subscriptions.push(cx.observe(&view.state, |this, _, cx| {
+            this.refresh_heavy_resources(cx);
+            cx.notify();
+        }));
+        subscriptions.push(cx.observe(&view.runtime.session, |this, _, cx| {
+            this.handle_session_change(cx);
+        }));
+        subscriptions.push(cx.observe(&view.runtime.player, |this, _, cx| {
+            this.refresh_heavy_resources(cx);
+            cx.notify();
+        }));
+        view._subscriptions = subscriptions;
+        view.refresh_heavy_resources(cx);
+        view
     }
 
     fn replace_queue_from_current_playlist(&mut self, cx: &mut Context<Self>) {
@@ -66,19 +75,32 @@ impl PlaylistPageView {
             .collect::<Vec<_>>();
         player::replace_queue(&self.runtime, tracks, 0, cx);
     }
+
+    fn refresh_heavy_resources(&mut self, cx: &mut Context<Self>) {
+        let page_state = self.state.read(cx);
+        let current_playing_track_id = self
+            .runtime
+            .player
+            .read(cx)
+            .current_item()
+            .map(|item| item.id);
+        self.heavy_resources = page_state.page.data.as_ref().map(|page| {
+            let tracks = Arc::new(page.tracks.clone());
+            PlaylistListRenderCache {
+                playlist_id: page.id,
+                title: page.name.clone(),
+                subtitle: format!("{} 首 · {}", page.track_count, page.creator_name),
+                heights: Arc::new(vec![px(60.); tracks.len()]),
+                tracks,
+                current_playing_track_id,
+            }
+        });
+    }
 }
 
 impl Render for PlaylistPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let snapshot = PlaylistPageSnapshot::from_state(
-            self.playlist_id,
-            &self.state.read(cx).page,
-            self.runtime
-                .player
-                .read(cx)
-                .current_item()
-                .map(|item| item.id),
-        );
+        let playlist_state = self.state.read(cx);
         let page = cx.entity();
         let on_play_track: TrackActionHandler = {
             let page = page.clone();
@@ -106,7 +128,9 @@ impl Render for PlaylistPageView {
         };
 
         render_playlist_page(
-            snapshot,
+            self.playlist_id,
+            &playlist_state.page,
+            self.heavy_resources.as_ref(),
             &self.page_scroll_handle,
             on_play_track,
             on_enqueue_track,
@@ -121,8 +145,13 @@ impl PageLifecycle for PlaylistPageView {
         self.ensure_loaded(cx);
     }
 
-    fn on_frozen(&mut self, cx: &mut Context<Self>) {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::SnapshotOnly
+    }
+
+    fn release_view_resources(&mut self, cx: &mut Context<Self>) {
         self.active = false;
+        self.heavy_resources = None;
         freeze_page_state(&self.state, cx);
     }
 }

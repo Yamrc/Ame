@@ -3,14 +3,12 @@ mod liked;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use nekowg::{
-    AnyElement, App, FontWeight, MouseButton, SharedString, div, img, prelude::*, px, relative, rgb,
-};
+use nekowg::{AnyElement, App, FontWeight, MouseButton, div, img, prelude::*, px, relative, rgb};
 
 use crate::component::playlist_card::{self, PlaylistCardActions, PlaylistCardProps};
 use crate::component::{button, page, theme};
 use crate::domain::library::PlaylistTrackItem;
-use crate::page::library::models::{LibraryPageSnapshot, LibraryPlaylistCard, LibraryTab};
+use crate::page::library::models::{LibraryPlaylistCard, LibraryTab};
 use crate::util::url::image_resize_url;
 
 use self::liked::{empty_liked_card, liked_card, liked_preview_list};
@@ -25,8 +23,22 @@ pub(crate) type PreviewPlayHandler = Arc<dyn Fn(PlaylistTrackItem, &mut App)>;
 pub(crate) type PlaylistActionHandler = Rc<dyn Fn(i64, &mut App)>;
 pub(crate) type TabActionHandler = Arc<dyn Fn(&mut App)>;
 
+pub(crate) struct LibrarySectionsRender<'a> {
+    pub loading: bool,
+    pub error: Option<&'a str>,
+    pub liked_playlist: Option<&'a LibraryPlaylistCard>,
+    pub liked_tracks: &'a [PlaylistTrackItem],
+    pub liked_lyric_lines: &'a [String],
+    pub created_playlists: &'a [LibraryPlaylistCard],
+    pub collected_playlists: &'a [LibraryPlaylistCard],
+    pub followed_playlists: &'a [LibraryPlaylistCard],
+    pub active_tab: LibraryTab,
+    pub title: &'a str,
+    pub user_avatar: Option<&'a str>,
+}
+
 pub(crate) fn render_library_sections(
-    snapshot: LibraryPageSnapshot,
+    view: LibrarySectionsRender<'_>,
     on_open_playlist: PlaylistActionHandler,
     on_replace_queue_from_playlist: PlaylistActionHandler,
     on_preview_play: PreviewPlayHandler,
@@ -34,51 +46,53 @@ pub(crate) fn render_library_sections(
     on_tab_collected: TabActionHandler,
     on_tab_followed: TabActionHandler,
 ) -> AnyElement {
-    let preview_count = snapshot.liked_tracks.len().min(PREVIEW_MAX);
+    let liked_tracks = view.liked_tracks;
+    let liked_lyric_lines = view.liked_lyric_lines;
+    let active_tab = view.active_tab;
+    let title = view.title;
+    let user_avatar = view.user_avatar;
+    let preview_count = liked_tracks.len().min(PREVIEW_MAX);
     let preview_rows = preview_count.div_ceil(PREVIEW_COLS).max(2);
     let preview_height = preview_rows as f32 * PREVIEW_ROW_HEIGHT
         + (preview_rows.saturating_sub(1) as f32) * PREVIEW_ROW_GAP;
     let preview_min_height = px(preview_height);
 
-    let liked_cover_card = snapshot.liked_playlist.clone().map(|item| {
+    let liked_cover_card = view.liked_playlist.cloned().map(|item| {
         let playlist_id = item.id;
         let on_open_playlist = on_open_playlist.clone();
         let on_replace_queue_from_playlist = on_replace_queue_from_playlist.clone();
         liked_card(
             item,
-            &snapshot.liked_lyric_lines,
+            liked_lyric_lines,
             preview_min_height,
             move |cx| on_open_playlist(playlist_id, cx),
             move |cx| on_replace_queue_from_playlist(playlist_id, cx),
         )
     });
-    let created_cards = build_playlist_cards(&snapshot.created_playlists, on_open_playlist.clone());
+    let created_cards =
+        build_playlist_cards(view.created_playlists.iter(), on_open_playlist.clone());
     let collected_cards =
-        build_playlist_cards(&snapshot.collected_playlists, on_open_playlist.clone());
-    let followed_cards = build_playlist_cards(&snapshot.followed_playlists, on_open_playlist);
+        build_playlist_cards(view.collected_playlists.iter(), on_open_playlist.clone());
+    let followed_cards =
+        build_playlist_cards(view.followed_playlists.iter(), on_open_playlist.clone());
 
-    let status = page::status_banner(
-        snapshot.loading,
-        snapshot.error.as_ref().map(AsRef::as_ref),
-        "加载中...",
-        "加载失败",
-    );
+    let status = page::status_banner(view.loading, view.error, "加载中...", "加载失败");
     let liked_cover_card = liked_cover_card.unwrap_or_else(|| empty_liked_card(preview_min_height));
     let liked_preview = liked_preview_list(
-        &snapshot.liked_tracks,
+        liked_tracks,
         PREVIEW_ROW_HEIGHT,
         PREVIEW_ROW_GAP,
         on_preview_play,
     );
-    let header = build_header(&snapshot.title, snapshot.user_avatar);
+    let header = build_header(title, user_avatar);
 
     let tabs = render_tabs(
-        snapshot.active_tab,
+        active_tab,
         on_tab_created,
         on_tab_collected,
         on_tab_followed,
     );
-    let panel = match snapshot.active_tab {
+    let panel = match active_tab {
         LibraryTab::Created => page::grid_or_empty(
             created_cards,
             PLAYLIST_GRID_COLUMNS,
@@ -117,13 +131,13 @@ pub(crate) fn render_library_sections(
         .into_any_element()
 }
 
-fn build_header(title: &SharedString, user_avatar: Option<String>) -> AnyElement {
+fn build_header(title: &str, user_avatar: Option<&str>) -> AnyElement {
     div()
         .flex()
         .items_center()
         .gap(px(12.))
         .child(match user_avatar {
-            Some(url) => img(image_resize_url(&url, "96y96"))
+            Some(url) => img(image_resize_url(url, "96y96"))
                 .size(px(44.))
                 .rounded_full()
                 .overflow_hidden()
@@ -139,7 +153,7 @@ fn build_header(title: &SharedString, user_avatar: Option<String>) -> AnyElement
                 .text_size(px(42.))
                 .font_weight(FontWeight::BOLD)
                 .text_color(rgb(theme::COLOR_TEXT_DARK))
-                .child(title.clone()),
+                .child(title.to_string()),
         )
         .into_any_element()
 }
@@ -172,12 +186,11 @@ fn render_tabs(
 }
 
 fn build_playlist_cards(
-    playlists: &[LibraryPlaylistCard],
+    playlists: impl Iterator<Item = impl std::borrow::Borrow<LibraryPlaylistCard>>,
     on_open_playlist: PlaylistActionHandler,
 ) -> Vec<AnyElement> {
     playlists
-        .iter()
-        .cloned()
+        .map(|item| item.borrow().clone())
         .map(|item| {
             let playlist_id = item.id;
             let on_open_playlist = on_open_playlist.clone();

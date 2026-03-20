@@ -1,4 +1,5 @@
 use nekowg::Context;
+use tracing::debug;
 
 use crate::domain::settings::HomeArtistLanguage;
 use crate::page::home::models::{HomeLoadResult, HomeSessionKey};
@@ -111,7 +112,7 @@ impl HomePageView {
             cx.notify();
         });
 
-        let page = cx.entity();
+        let page = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
             let result = cx
                 .background_executor()
@@ -119,9 +120,11 @@ impl HomePageView {
                     async move { fetch_home_payload(&cookie, key.has_user_token, artist_language) },
                 )
                 .await;
-            page.update(cx, |this, cx| {
+            if let Err(err) = page.update(cx, |this, cx| {
                 this.apply_home_load(key, artist_language, result, cx)
-            });
+            }) {
+                debug!("home page load dropped before apply: {err}");
+            }
         })
         .detach();
     }

@@ -6,7 +6,7 @@ use nekowg::{
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::route::AppRoute;
 use crate::app::router;
 use crate::app::runtime::AppRuntime;
@@ -59,9 +59,9 @@ impl SearchPageView {
 
 impl Render for SearchPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let route = self.route.clone();
+        let route = &self.route;
         let page = cx.entity();
-        let search_state = self.state.read(cx).clone();
+        let search_state = self.state.read(cx);
         let current_playing_track_id = self
             .runtime
             .player
@@ -144,7 +144,7 @@ impl Render for SearchPageView {
                     page::empty_card("暂无结果")
                 } else {
                     render_overview_sections(
-                        search_state.overview.data,
+                        &search_state.overview.data,
                         on_play_song,
                         on_enqueue_song,
                         on_open_playlist,
@@ -162,7 +162,7 @@ impl Render for SearchPageView {
             }
             Some(route_type) => render_type_page(
                 route_type,
-                &search_state,
+                search_state,
                 current_playing_track_id,
                 on_play_song,
                 on_enqueue_song,
@@ -193,7 +193,11 @@ impl PageLifecycle for SearchPageView {
         self.ensure_loaded(cx);
     }
 
-    fn on_frozen(&mut self, cx: &mut Context<Self>) {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::SnapshotOnly
+    }
+
+    fn release_view_resources(&mut self, cx: &mut Context<Self>) {
         self.active = false;
         self.release_search_heavy_data(cx);
     }

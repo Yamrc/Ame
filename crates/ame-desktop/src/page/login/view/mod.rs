@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use nekowg::{Context, Entity, Render, Subscription, Window, prelude::*};
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
 use crate::domain::session as auth;
 use crate::page::login::models::LoginViewModel;
@@ -98,7 +98,11 @@ impl Render for LoginPageView {
 }
 
 impl PageLifecycle for LoginPageView {
-    fn on_frozen(&mut self, cx: &mut Context<Self>) {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::KeepAlive
+    }
+
+    fn release_view_resources(&mut self, cx: &mut Context<Self>) {
         self.stop_login_qr_polling(cx);
         self.polling_task_active = false;
     }

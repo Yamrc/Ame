@@ -8,11 +8,12 @@ use super::{
     EnqueueSongHandler, OVERVIEW_ARTIST_PLACEHOLDER_HEIGHT, OVERVIEW_CARD_PLACEHOLDER_HEIGHT,
     OVERVIEW_TRACK_PLACEHOLDER_HEIGHT, PLAYLIST_GRID_COLUMNS, PlaySongHandler, PlaylistOpenHandler,
     SHORT_TRACK_COLUMNS, SHORT_TRACK_GRID_GAP, SearchOverview, SearchRouteType,
-    SearchTypeNavigateHandler, render_artist_card, render_playlist_card, render_short_track_item,
+    SearchTypeNavigateHandler, render_album_card_ref, render_artist_card_ref,
+    render_playlist_card_ref, render_short_track_item_ref,
 };
 
 pub(crate) fn render_overview_sections(
-    overview: SearchOverview,
+    overview: &SearchOverview,
     on_play_song: PlaySongHandler,
     on_enqueue_song: EnqueueSongHandler,
     on_open_playlist: PlaylistOpenHandler,
@@ -29,8 +30,7 @@ pub(crate) fn render_overview_sections(
                 .artists
                 .iter()
                 .take(3)
-                .cloned()
-                .map(|artist| render_artist_card(artist.name, artist.cover_url))
+                .map(render_artist_card_ref)
                 .collect(),
             3,
             px(24.),
@@ -49,10 +49,7 @@ pub(crate) fn render_overview_sections(
                 .albums
                 .iter()
                 .take(3)
-                .cloned()
-                .map(|album| {
-                    render_playlist_card(album.name, album.artist_name, album.cover_url, None)
-                })
+                .map(render_album_card_ref)
                 .collect(),
             3,
             px(24.),
@@ -63,14 +60,13 @@ pub(crate) fn render_overview_sections(
     let track_rows = overview
         .tracks
         .iter()
-        .cloned()
         .enumerate()
         .map(|(index, song)| {
             let song_for_play = song.clone();
             let song_for_enqueue = song.clone();
             let on_play_song = on_play_song.clone();
             let on_enqueue_song = on_enqueue_song.clone();
-            render_short_track_item(
+            render_short_track_item_ref(
                 format!("search-overview-track-{index}-{}", song.id),
                 song,
                 move |cx| on_play_song(song_for_play.clone(), cx),
@@ -82,14 +78,11 @@ pub(crate) fn render_overview_sections(
         .playlists
         .iter()
         .take(12)
-        .cloned()
         .map(|playlist| {
             let playlist_id = playlist.id;
             let on_open_playlist = on_open_playlist.clone();
-            render_playlist_card(
-                playlist.name,
-                playlist.creator_name,
-                playlist.cover_url,
+            render_playlist_card_ref(
+                playlist,
                 Some(Rc::new(move |cx| on_open_playlist(playlist_id, cx))),
             )
         })

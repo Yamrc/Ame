@@ -1,4 +1,5 @@
 use nekowg::Context;
+use tracing::debug;
 
 use crate::domain::session as auth_actions;
 use crate::page::discover::models::DiscoverLoadResult;
@@ -76,13 +77,16 @@ impl DiscoverPageView {
             cx.notify();
         });
 
-        let page = cx.entity();
+        let page = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { fetch_discover_payload(&cookie) })
                 .await;
-            page.update(cx, |this, cx| this.apply_load_result(source, result, cx));
+            if let Err(err) = page.update(cx, |this, cx| this.apply_load_result(source, result, cx))
+            {
+                debug!("discover page load dropped before apply: {err}");
+            }
         })
         .detach();
     }

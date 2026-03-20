@@ -4,20 +4,21 @@ use std::sync::Arc;
 
 use nekowg::{Context, Entity, Render, Subscription, Window, prelude::*};
 
-use crate::app::page::PageLifecycle;
+use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
 use crate::domain::player;
-use crate::page::daily_tracks::models::DailyTracksPageSnapshot;
 use crate::page::daily_tracks::sections::{
-    ReplaceDailyQueueHandler, TrackActionHandler, render_daily_tracks_page,
+    DailyTracksRenderCache, ReplaceDailyQueueHandler, TrackActionHandler, render_daily_tracks_page,
 };
 use crate::page::daily_tracks::state::DailyTracksPageState;
+use crate::page::playlist::PlaylistTrackRow;
 use crate::page::state::freeze_page_state;
 
 pub struct DailyTracksPageView {
     runtime: AppRuntime,
     state: Entity<DailyTracksPageState>,
     last_user_id: Option<i64>,
+    heavy_resources: Option<DailyTracksRenderCache>,
     active: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -25,21 +26,30 @@ pub struct DailyTracksPageView {
 impl DailyTracksPageView {
     pub fn new(runtime: AppRuntime, cx: &mut Context<Self>) -> Self {
         let state = cx.new(|_| DailyTracksPageState::default());
-        let mut subscriptions = Vec::new();
-        subscriptions.push(cx.observe(&state, |_, _, cx| {
-            cx.notify();
-        }));
-        subscriptions.push(cx.observe(&runtime.session, |this, _, cx| {
-            this.handle_session_change(cx);
-        }));
-        let last_user_id = runtime.session.read(cx).auth_user_id;
-        Self {
+        let mut view = Self {
             runtime,
             state,
-            last_user_id,
+            last_user_id: None,
+            heavy_resources: None,
             active: false,
-            _subscriptions: subscriptions,
-        }
+            _subscriptions: Vec::new(),
+        };
+        view.last_user_id = view.runtime.session.read(cx).auth_user_id;
+        let mut subscriptions = Vec::new();
+        subscriptions.push(cx.observe(&view.state, |this, _, cx| {
+            this.refresh_heavy_resources(cx);
+            cx.notify();
+        }));
+        subscriptions.push(cx.observe(&view.runtime.session, |this, _, cx| {
+            this.handle_session_change(cx);
+        }));
+        subscriptions.push(cx.observe(&view.runtime.player, |this, _, cx| {
+            this.refresh_heavy_resources(cx);
+            cx.notify();
+        }));
+        view._subscriptions = subscriptions;
+        view.refresh_heavy_resources(cx);
+        view
     }
 
     fn replace_queue(&mut self, track_id: Option<i64>, cx: &mut Context<Self>) {
@@ -63,18 +73,35 @@ impl DailyTracksPageView {
             cx.notify();
         });
     }
+
+    fn refresh_heavy_resources(&mut self, cx: &mut Context<Self>) {
+        let tracks_state = self.state.read(cx);
+        let current_playing_track_id = self
+            .runtime
+            .player
+            .read(cx)
+            .current_item()
+            .map(|item| item.id);
+        let rows = Arc::new(
+            tracks_state
+                .tracks
+                .data
+                .iter()
+                .cloned()
+                .map(PlaylistTrackRow::from)
+                .collect::<Vec<_>>(),
+        );
+        self.heavy_resources = Some(DailyTracksRenderCache {
+            first_track_id: tracks_state.tracks.data.first().map(|track| track.id),
+            current_playing_track_id,
+            rows,
+        });
+    }
 }
 
 impl Render for DailyTracksPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let snapshot = DailyTracksPageSnapshot::from_state(
-            &self.state.read(cx).tracks,
-            self.runtime
-                .player
-                .read(cx)
-                .current_item()
-                .map(|item| item.id),
-        );
+        let tracks = self.state.read(cx);
         let page = cx.entity();
         let on_play_track: TrackActionHandler = {
             let page = page.clone();
@@ -101,7 +128,13 @@ impl Render for DailyTracksPageView {
             })
         };
 
-        render_daily_tracks_page(snapshot, on_play_track, on_enqueue_track, on_replace_queue)
+        render_daily_tracks_page(
+            &tracks.tracks,
+            self.heavy_resources.as_ref(),
+            on_play_track,
+            on_enqueue_track,
+            on_replace_queue,
+        )
     }
 }
 
@@ -111,8 +144,13 @@ impl PageLifecycle for DailyTracksPageView {
         self.ensure_loaded(cx);
     }
 
-    fn on_frozen(&mut self, cx: &mut Context<Self>) {
+    fn snapshot_policy(&self) -> PageRetentionPolicy {
+        PageRetentionPolicy::SnapshotOnly
+    }
+
+    fn release_view_resources(&mut self, cx: &mut Context<Self>) {
         self.active = false;
+        self.heavy_resources = None;
         freeze_page_state(&self.state, cx);
     }
 }

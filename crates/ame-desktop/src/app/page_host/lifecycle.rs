@@ -3,10 +3,11 @@ use std::time::{Duration, Instant};
 use nekowg::{Context, Pixels, px};
 use tracing::error;
 
+use crate::app::page::PageRetentionPolicy;
 use crate::app::router;
 
 use super::key::PageKey;
-use super::slot::{FrozenPage, PageInstance, create_page};
+use super::slot::{FrozenEntry, FrozenPage, FrozenSnapshot, PageInstance, create_page};
 use super::{FROZEN_TTL, PageHostView};
 
 impl PageHostView {
@@ -53,28 +54,71 @@ impl PageHostView {
         }
 
         if let Some(active) = self.active.take() {
-            active.slot.on_frozen(cx);
-            self.frozen.insert(
-                active.key,
-                FrozenPage {
-                    slot: active.slot,
-                    destroy_at: now + FROZEN_TTL,
-                    scroll_offset: active.scroll_offset,
-                },
-            );
+            let snapshot = active.slot.capture_snapshot(cx);
+            let retention = active.slot.snapshot_policy(cx);
+            active.slot.release_view_resources(cx);
+
+            match retention {
+                PageRetentionPolicy::KeepAlive => {
+                    self.frozen.insert(
+                        active.key,
+                        FrozenEntry::KeepAlive(FrozenPage {
+                            slot: active.slot,
+                            destroy_at: now + FROZEN_TTL,
+                            scroll_offset: active.scroll_offset,
+                        }),
+                    );
+                }
+                PageRetentionPolicy::SnapshotOnly => {
+                    active.slot.on_destroy(cx);
+                    self.frozen.insert(
+                        active.key,
+                        FrozenEntry::Snapshot(Box::new(FrozenSnapshot {
+                            snapshot,
+                            destroy_at: now + FROZEN_TTL,
+                            scroll_offset: active.scroll_offset,
+                        })),
+                    );
+                }
+                PageRetentionPolicy::Discard => {
+                    active.slot.on_destroy(cx);
+                }
+            }
         }
 
         if let Some(frozen) = self.frozen.remove(&key) {
-            let scroll_offset = frozen.scroll_offset;
-            frozen.slot.on_activate(cx);
-            self.active = Some(PageInstance {
-                key,
-                slot: frozen.slot,
-                scroll_offset,
-            });
-            self.pending_scroll_restore = Some(scroll_offset);
-            cx.notify();
-            return;
+            match frozen {
+                FrozenEntry::KeepAlive(frozen) => {
+                    let scroll_offset = frozen.scroll_offset;
+                    frozen.slot.on_activate(cx);
+                    self.active = Some(PageInstance {
+                        key,
+                        slot: frozen.slot,
+                        scroll_offset,
+                    });
+                    self.pending_scroll_restore = Some(scroll_offset);
+                    cx.notify();
+                    return;
+                }
+                FrozenEntry::Snapshot(frozen) => {
+                    let frozen = *frozen;
+                    let scroll_offset = frozen.scroll_offset;
+                    let slot =
+                        create_page(&self.runtime, &self.page_scroll_handle, &key, &route, cx);
+                    if let Some(snapshot) = frozen.snapshot {
+                        slot.restore_snapshot(snapshot, cx);
+                    }
+                    slot.on_activate(cx);
+                    self.active = Some(PageInstance {
+                        key,
+                        slot,
+                        scroll_offset,
+                    });
+                    self.pending_scroll_restore = Some(scroll_offset);
+                    cx.notify();
+                    return;
+                }
+            }
         }
 
         let slot = create_page(&self.runtime, &self.page_scroll_handle, &key, &route, cx);
@@ -93,12 +137,18 @@ impl PageHostView {
         let expired = self
             .frozen
             .iter()
-            .filter(|(_, page)| page.destroy_at <= now)
+            .filter(|(_, page)| match page {
+                FrozenEntry::KeepAlive(page) => page.destroy_at <= now,
+                FrozenEntry::Snapshot(page) => page.destroy_at <= now,
+            })
             .map(|(key, _)| key.clone())
             .collect::<Vec<_>>();
         for key in expired {
             if let Some(page) = self.frozen.remove(&key) {
-                page.slot.on_destroy(cx);
+                match page {
+                    FrozenEntry::KeepAlive(page) => page.slot.on_destroy(cx),
+                    FrozenEntry::Snapshot(_) => {}
+                }
             }
         }
         before != self.frozen.len()

@@ -7,8 +7,8 @@ use crate::component::page;
 
 use super::{
     NavigateHandler, PlaySongHandler, PlaylistOpenHandler, SEARCH_TYPE_CARD_COLUMNS,
-    SearchCollectionState, SearchPageState, SearchRouteType, render_artist_card,
-    render_playlist_card, render_track_row,
+    SearchCollectionState, SearchPageState, SearchRouteType, render_album_card_ref,
+    render_artist_card_ref, render_playlist_card_ref, render_track_row_ref,
 };
 
 pub(crate) fn render_type_page(
@@ -30,8 +30,7 @@ pub(crate) fn render_type_page(
                     .items
                     .data
                     .iter()
-                    .cloned()
-                    .map(|artist| render_artist_card(artist.name, artist.cover_url))
+                    .map(render_artist_card_ref)
                     .collect(),
                 super::PLAYLIST_GRID_COLUMNS,
                 px(24.),
@@ -48,10 +47,7 @@ pub(crate) fn render_type_page(
                     .items
                     .data
                     .iter()
-                    .cloned()
-                    .map(|album| {
-                        render_playlist_card(album.name, album.artist_name, album.cover_url, None)
-                    })
+                    .map(render_album_card_ref)
                     .collect(),
                 SEARCH_TYPE_CARD_COLUMNS,
                 px(24.),
@@ -68,7 +64,6 @@ pub(crate) fn render_type_page(
                     .items
                     .data
                     .iter()
-                    .cloned()
                     .enumerate()
                     .map(|(index, song)| {
                         let is_playing = current_playing_track_id == Some(song.id);
@@ -76,7 +71,7 @@ pub(crate) fn render_type_page(
                         let song_for_enqueue = song.clone();
                         let on_play_song = on_play_song.clone();
                         let on_enqueue_song = on_enqueue_song.clone();
-                        render_track_row(
+                        render_track_row_ref(
                             format!("search-type-track-{index}-{}", song.id),
                             song,
                             is_playing,
@@ -102,14 +97,11 @@ pub(crate) fn render_type_page(
                     .items
                     .data
                     .iter()
-                    .cloned()
                     .map(|playlist| {
                         let playlist_id = playlist.id;
                         let on_open_playlist = on_open_playlist.clone();
-                        render_playlist_card(
-                            playlist.name,
-                            playlist.creator_name,
-                            playlist.cover_url,
+                        render_playlist_card_ref(
+                            playlist,
                             Some(Rc::new(move |cx| on_open_playlist(playlist_id, cx))),
                         )
                     })
