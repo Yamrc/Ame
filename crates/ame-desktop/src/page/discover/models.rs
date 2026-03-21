@@ -9,7 +9,7 @@ pub struct DiscoverPlaylistCard {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiscoverLoadResult {
     pub playlists: Vec<LibraryPlaylistItem>,
     pub fetched_at_ms: u64,

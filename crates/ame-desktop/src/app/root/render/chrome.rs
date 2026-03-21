@@ -10,7 +10,6 @@ use crate::component::{
     title_bar::{self, TitleBarActions, TitleBarModel},
 };
 use crate::domain::player;
-use crate::util::url::image_resize_url;
 
 use super::super::RootView;
 
@@ -42,14 +41,13 @@ impl RootView {
             .auth_user_avatar
             .as_ref()
             .filter(|value| !value.trim().is_empty())
-            .map(|value| image_resize_url(value, "64y64"))
-            .unwrap_or_else(|| "image/akkarin.webp".to_string());
+            .cloned();
 
         let nav = nav_bar::render(
             &NavBarModel {
                 pathname: pathname.into(),
                 search_input: self.nav_search_input.clone(),
-                avatar_asset: nav_avatar.into(),
+                avatar_url: nav_avatar.map(Into::into),
             },
             &NavBarActions {
                 on_back: Arc::new(|_| {}),

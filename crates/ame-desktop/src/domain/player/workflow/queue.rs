@@ -31,7 +31,7 @@ pub fn enqueue_track<T>(
     let metadata = match player::fetch_track_metadata_blocking(track.id, Some(cookie.as_str())) {
         Ok(meta) => Some(meta),
         Err(err) => {
-            auth::push_shell_error(runtime, format!("获取歌曲信息失败: {err}"), cx);
+            auth::push_shell_error(runtime, format!("Failed to fetch track details: {err}"), cx);
             None
         }
     };
@@ -93,7 +93,11 @@ pub fn replace_queue<T>(
     cx: &mut Context<T>,
 ) {
     if tracks.is_empty() {
-        auth::push_shell_error(runtime, "歌单为空，无法替换队列".to_string(), cx);
+        auth::push_shell_error(
+            runtime,
+            "Playlist is empty and cannot replace the queue".to_string(),
+            cx,
+        );
         return;
     }
 
@@ -151,8 +155,10 @@ pub fn clear_queue<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     });
     match with_audio_bridge(runtime, |audio| audio.send(AudioCommand::Stop)) {
         Ok(Ok(_)) => {}
-        Ok(Err(err)) => auth::push_shell_error(runtime, format!("停止播放失败: {err}"), cx),
-        Err(err) => auth::push_shell_error(runtime, format!("停止播放失败: {err}"), cx),
+        Ok(Err(err)) => {
+            auth::push_shell_error(runtime, format!("Failed to stop playback: {err}"), cx)
+        }
+        Err(err) => auth::push_shell_error(runtime, format!("Failed to stop playback: {err}"), cx),
     }
     persist_player_runtime(runtime, cx);
     persist_player_progress(runtime, cx);

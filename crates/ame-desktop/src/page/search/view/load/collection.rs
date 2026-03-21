@@ -1,7 +1,9 @@
 use nekowg::Context;
-use tracing::debug;
+use tracing::{debug, warn};
 
+use crate::domain::cache::CacheLookup;
 use crate::page::search::fetch::fetch_search_type_payload;
+use crate::page::search::service::read_collection_cache;
 use crate::page::search::state::{prepare_collection_load, should_skip_collection_load};
 use crate::page::search::types::SearchRouteType;
 
@@ -34,30 +36,95 @@ pub(in crate::page::search::view) fn ensure_type_loaded(
     if should_skip {
         return;
     }
+    let request_session_key = session_load_key(&this.runtime, cx);
+    let offset = if append { current_len as u32 } else { 0 };
+    let mut used_stale_cache = false;
+    match read_collection_cache(
+        &this.runtime,
+        request_session_key,
+        &keyword,
+        route_type,
+        offset,
+        TYPE_PAGE_LIMIT,
+    ) {
+        Ok(CacheLookup::Fresh(cached)) => {
+            this.apply_type_result(
+                super::TypeResultApply {
+                    keyword,
+                    route_type,
+                    append,
+                    session_key: request_session_key,
+                    request_offset: offset,
+                    fetched_at_ms: Some(cached.fetched_at_ms),
+                },
+                Ok(cached.value),
+                cx,
+            );
+            return;
+        }
+        Ok(CacheLookup::Stale(cached)) => {
+            this.apply_type_result(
+                super::TypeResultApply {
+                    keyword: keyword.clone(),
+                    route_type,
+                    append,
+                    session_key: request_session_key,
+                    request_offset: offset,
+                    fetched_at_ms: Some(cached.fetched_at_ms),
+                },
+                Ok(cached.value),
+                cx,
+            );
+            used_stale_cache = true;
+        }
+        Ok(CacheLookup::Miss) => {}
+        Err(err) => {
+            warn!(error = %err, "search collection cache read failed");
+        }
+    }
 
     let cookie = auth_cookie(this, cx);
     this.state.update(cx, |state, cx| {
-        match route_type {
-            SearchRouteType::Artists => {
-                prepare_collection_load(&mut state.artists, keyword.clone(), append, source)
+        if used_stale_cache {
+            match route_type {
+                SearchRouteType::Artists => {
+                    state.artists.items.revalidate();
+                    state.artists.items.source = source;
+                }
+                SearchRouteType::Albums => {
+                    state.albums.items.revalidate();
+                    state.albums.items.source = source;
+                }
+                SearchRouteType::Tracks => {
+                    state.tracks.items.revalidate();
+                    state.tracks.items.source = source;
+                }
+                SearchRouteType::Playlists => {
+                    state.playlists.items.revalidate();
+                    state.playlists.items.source = source;
+                }
             }
-            SearchRouteType::Albums => {
-                prepare_collection_load(&mut state.albums, keyword.clone(), append, source)
-            }
-            SearchRouteType::Tracks => {
-                prepare_collection_load(&mut state.tracks, keyword.clone(), append, source)
-            }
-            SearchRouteType::Playlists => {
-                prepare_collection_load(&mut state.playlists, keyword.clone(), append, source)
+        } else {
+            match route_type {
+                SearchRouteType::Artists => {
+                    prepare_collection_load(&mut state.artists, keyword.clone(), append, source)
+                }
+                SearchRouteType::Albums => {
+                    prepare_collection_load(&mut state.albums, keyword.clone(), append, source)
+                }
+                SearchRouteType::Tracks => {
+                    prepare_collection_load(&mut state.tracks, keyword.clone(), append, source)
+                }
+                SearchRouteType::Playlists => {
+                    prepare_collection_load(&mut state.playlists, keyword.clone(), append, source)
+                }
             }
         }
         cx.notify();
     });
 
-    let offset = if append { current_len as u32 } else { 0 };
     let page = cx.entity().downgrade();
     let request_keyword = keyword.clone();
-    let request_session_key = session_load_key(&this.runtime, cx);
     cx.spawn(async move |_, cx| {
         let result = cx
             .background_executor()
@@ -72,7 +139,18 @@ pub(in crate::page::search::view) fn ensure_type_loaded(
             })
             .await;
         if let Err(err) = page.update(cx, |this, cx| {
-            this.apply_type_result(keyword, route_type, append, request_session_key, result, cx)
+            this.apply_type_result(
+                super::TypeResultApply {
+                    keyword,
+                    route_type,
+                    append,
+                    session_key: request_session_key,
+                    request_offset: offset,
+                    fetched_at_ms: None,
+                },
+                result,
+                cx,
+            )
         }) {
             debug!("search collection load dropped before apply: {err}");
         }

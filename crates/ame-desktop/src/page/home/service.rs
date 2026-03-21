@@ -3,12 +3,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nekowg::Context;
 
 use crate::app::runtime::AppRuntime;
+use crate::domain::cache::{CacheClass, CacheKey, CacheLookup, CachePolicy, CacheScope};
 use crate::domain::library as library_actions;
 use crate::domain::session::SessionState;
 use crate::domain::settings::HomeArtistLanguage;
 use crate::page::home::models::{HomeLoadResult, HomeSessionKey};
 
 const HOME_TOPLIST_IDS: [i64; 5] = [19723756, 180106, 60198, 3812895, 60131];
+const HOME_CACHE_VERSION: u32 = 1;
 
 pub fn fetch_home_payload(
     cookie: &str,
@@ -124,11 +126,70 @@ pub fn session_key_from_session(session: &SessionState) -> HomeSessionKey {
     }
 }
 
+pub fn read_home_payload_cache(
+    runtime: &AppRuntime,
+    key: HomeSessionKey,
+    artist_language: HomeArtistLanguage,
+) -> Result<CacheLookup<HomeLoadResult>, String> {
+    let Some(cache) = runtime.services.network_cache.as_ref() else {
+        return Ok(CacheLookup::Miss);
+    };
+    cache.read_json(
+        CacheClass::Weather,
+        &home_cache_key(key, artist_language)?,
+        CachePolicy::weather(),
+    )
+}
+
+pub fn store_home_payload_cache(
+    runtime: &AppRuntime,
+    key: HomeSessionKey,
+    artist_language: HomeArtistLanguage,
+    payload: &HomeLoadResult,
+) -> Result<u64, String> {
+    let Some(cache) = runtime.services.network_cache.as_ref() else {
+        return Ok(now_millis());
+    };
+    let mut tags = vec![
+        "home".to_string(),
+        format!("home:artist-language:{:?}", artist_language),
+    ];
+    if let Some(user_id) = key.user_id {
+        tags.push(format!("user:{user_id}:home"));
+    }
+    cache.write_json(
+        CacheClass::Weather,
+        &home_cache_key(key, artist_language)?,
+        CachePolicy::weather(),
+        &tags,
+        payload,
+    )
+}
+
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or_default()
+}
+
+fn home_cache_key(
+    key: HomeSessionKey,
+    artist_language: HomeArtistLanguage,
+) -> Result<CacheKey, String> {
+    let scope = if key.has_user_token {
+        key.user_id
+            .map(CacheScope::User)
+            .unwrap_or(CacheScope::Guest)
+    } else {
+        CacheScope::Guest
+    };
+    CacheKey::new(
+        "home.payload",
+        HOME_CACHE_VERSION,
+        scope,
+        &(artist_language, key.has_user_token),
+    )
 }
 
 #[cfg(test)]

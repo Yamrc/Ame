@@ -13,6 +13,15 @@ use super::{SearchPageView, SessionLoadKey};
 pub(super) use collection::ensure_type_loaded;
 pub(super) use overview::ensure_overview_loaded;
 
+struct TypeResultApply {
+    keyword: String,
+    route_type: SearchRouteType,
+    append: bool,
+    session_key: SessionLoadKey,
+    request_offset: u32,
+    fetched_at_ms: Option<u64>,
+}
+
 impl SearchPageView {
     pub(super) fn handle_session_change(&mut self, cx: &mut Context<Self>) {
         let session_key = session_load_key(&self.runtime, cx);
@@ -20,7 +29,9 @@ impl SearchPageView {
             return;
         }
         self.last_session_key = session_key;
-        self.clear_search_state(cx);
+        if !self.active {
+            self.clear_search_state(cx);
+        }
         if self.active {
             self.ensure_loaded(cx);
         }
@@ -55,6 +66,7 @@ impl SearchPageView {
         keyword: String,
         session_key: SessionLoadKey,
         result: Result<SearchOverview, String>,
+        cached_fetched_at_ms: Option<u64>,
         cx: &mut Context<Self>,
     ) {
         if self.route.keyword != keyword || session_load_key(&self.runtime, cx) != session_key {
@@ -64,13 +76,26 @@ impl SearchPageView {
         self.state.update(cx, |state, cx| {
             match result {
                 Ok(overview) => {
+                    let fetched_at_ms = cached_fetched_at_ms.unwrap_or_else(|| {
+                        crate::page::search::service::store_overview_cache(
+                            &self.runtime,
+                            session_key,
+                            &keyword,
+                            &overview,
+                        )
+                        .unwrap_or_else(|_| now_millis())
+                    });
                     state.overview_keyword = keyword;
-                    state.overview.succeed(overview, Some(now_millis()));
+                    state.overview.succeed(overview, Some(fetched_at_ms));
                 }
                 Err(err) => {
                     state.overview_keyword = keyword;
-                    state.overview.clear();
-                    state.overview.fail(err);
+                    if state.overview.has_cached_value() {
+                        state.overview.fail(err);
+                    } else {
+                        state.overview.clear();
+                        state.overview.fail(err);
+                    }
                 }
             }
             cx.notify();
@@ -79,13 +104,18 @@ impl SearchPageView {
 
     fn apply_type_result(
         &mut self,
-        keyword: String,
-        route_type: SearchRouteType,
-        append: bool,
-        session_key: SessionLoadKey,
+        apply: TypeResultApply,
         result: Result<SearchTypePayload, String>,
         cx: &mut Context<Self>,
     ) {
+        let TypeResultApply {
+            keyword,
+            route_type,
+            append,
+            session_key,
+            request_offset,
+            fetched_at_ms: cached_fetched_at_ms,
+        } = apply;
         if self.route.keyword != keyword
             || self.route.route_type != Some(route_type)
             || session_load_key(&self.runtime, cx) != session_key
@@ -94,18 +124,43 @@ impl SearchPageView {
         }
 
         self.state.update(cx, |state, cx| {
+            let fetched_at_ms = cached_fetched_at_ms.unwrap_or_else(|| match &result {
+                Ok(payload) => crate::page::search::service::store_collection_cache(
+                    &self.runtime,
+                    session_key,
+                    &keyword,
+                    route_type,
+                    request_offset,
+                    super::TYPE_PAGE_LIMIT,
+                    payload,
+                )
+                .unwrap_or_else(|_| now_millis()),
+                Err(_) => now_millis(),
+            });
             match (route_type, result) {
                 (SearchRouteType::Artists, Ok(SearchTypePayload::Artists(page))) => {
-                    apply_collection_result(&mut state.artists, keyword, page, append)
+                    apply_collection_result(
+                        &mut state.artists,
+                        keyword,
+                        page,
+                        append,
+                        fetched_at_ms,
+                    )
                 }
                 (SearchRouteType::Albums, Ok(SearchTypePayload::Albums(page))) => {
-                    apply_collection_result(&mut state.albums, keyword, page, append)
+                    apply_collection_result(&mut state.albums, keyword, page, append, fetched_at_ms)
                 }
                 (SearchRouteType::Tracks, Ok(SearchTypePayload::Tracks(page))) => {
-                    apply_collection_result(&mut state.tracks, keyword, page, append)
+                    apply_collection_result(&mut state.tracks, keyword, page, append, fetched_at_ms)
                 }
                 (SearchRouteType::Playlists, Ok(SearchTypePayload::Playlists(page))) => {
-                    apply_collection_result(&mut state.playlists, keyword, page, append)
+                    apply_collection_result(
+                        &mut state.playlists,
+                        keyword,
+                        page,
+                        append,
+                        fetched_at_ms,
+                    )
                 }
                 (_, Ok(_)) => {}
                 (SearchRouteType::Artists, Err(err)) => {

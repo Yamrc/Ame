@@ -92,7 +92,7 @@ impl PageSlot {
             Self::Unknown(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
         };
         if let Err(err) = result {
-            error!("恢复页面快照失败: {err}");
+            error!("Failed to restore page snapshot: {err}");
         }
     }
 

@@ -1,14 +1,15 @@
 use nekowg::Context;
-use tracing::debug;
+use tracing::{debug, warn};
 
+use crate::domain::cache::CacheLookup;
 use crate::domain::session as auth;
 use crate::page::state::DataSource;
 
 use super::PlaylistPageView;
 use crate::page::playlist::models::{PlaylistPage, SessionLoadKey};
 use crate::page::playlist::service::{
-    cache_playlist_page, cached_playlist_page, fetch_playlist_page_payload, now_millis,
-    session_load_key,
+    fetch_playlist_page_payload, now_millis, read_playlist_page_cache, session_load_key,
+    store_playlist_page,
 };
 
 impl PlaylistPageView {
@@ -18,10 +19,12 @@ impl PlaylistPageView {
             return;
         }
         self.last_session_key = session_key;
-        self.state.update(cx, |state, cx| {
-            state.page.clear();
-            cx.notify();
-        });
+        if !self.active {
+            self.state.update(cx, |state, cx| {
+                state.page.clear();
+                cx.notify();
+            });
+        }
         if self.active {
             self.ensure_loaded(cx);
         }
@@ -30,7 +33,7 @@ impl PlaylistPageView {
     pub(super) fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
         if self.playlist_id <= 0 {
             self.state.update(cx, |state, cx| {
-                state.page.fail("无效歌单 ID");
+                state.page.fail("Invalid playlist ID");
                 cx.notify();
             });
             return;
@@ -50,45 +53,52 @@ impl PlaylistPageView {
         if state.page.loading {
             return;
         }
-        if state
-            .page
-            .data
-            .as_ref()
-            .is_some_and(|page| page.id == self.playlist_id)
-            && state.page.fetched_at_ms.is_some()
-            && state.page.source == source
-        {
-            self.state.update(cx, |state, cx| {
-                state.page.loading = false;
-                state.page.error = None;
-                cx.notify();
-            });
-            return;
-        }
+        let mut used_stale_cache = false;
 
-        if let Some((page, fetched_at_ms)) =
-            cached_playlist_page(&self.runtime, self.playlist_id, session.auth_user_id)
-        {
-            self.state.update(cx, |state, cx| {
-                state.page.succeed(Some(page), Some(fetched_at_ms));
-                state.page.source = source;
-                cx.notify();
-            });
-            return;
+        match read_playlist_page_cache(&self.runtime, self.playlist_id, session.auth_user_id) {
+            Ok(CacheLookup::Fresh(cached)) => {
+                self.state.update(cx, |state, cx| {
+                    state
+                        .page
+                        .succeed(Some(cached.value), Some(cached.fetched_at_ms));
+                    state.page.source = source;
+                    cx.notify();
+                });
+                return;
+            }
+            Ok(CacheLookup::Stale(cached)) => {
+                self.state.update(cx, |state, cx| {
+                    state
+                        .page
+                        .succeed(Some(cached.value), Some(cached.fetched_at_ms));
+                    state.page.source = source;
+                    state.page.revalidate();
+                    cx.notify();
+                });
+                used_stale_cache = true;
+            }
+            Ok(CacheLookup::Miss) => {}
+            Err(err) => {
+                warn!(error = %err, "playlist cache read failed");
+            }
         }
 
         let Some(cookie) = auth::build_cookie_header(&session.auth_bundle) else {
             self.state.update(cx, |state, cx| {
-                state.page.fail("缺少鉴权凭据");
+                state
+                    .page
+                    .fail_preserving_cached("Missing auth credentials");
                 cx.notify();
             });
             return;
         };
 
-        self.state.update(cx, |state, cx| {
-            state.page.begin(source);
-            cx.notify();
-        });
+        if !used_stale_cache {
+            self.state.update(cx, |state, cx| {
+                state.page.begin(source);
+                cx.notify();
+            });
+        }
 
         let page = cx.entity().downgrade();
         let playlist_id = self.playlist_id;
@@ -119,17 +129,16 @@ impl PlaylistPageView {
         match result {
             Ok(page) => {
                 let fetched_at_ms =
-                    cache_playlist_page(&self.runtime, self.playlist_id, session_key.0, &page)
-                        .or_else(|| Some(now_millis()));
+                    store_playlist_page(&self.runtime, self.playlist_id, session_key.0, &page)
+                        .unwrap_or_else(|_| now_millis());
                 self.state.update(cx, |state, cx| {
-                    state.page.succeed(Some(page), fetched_at_ms);
+                    state.page.succeed(Some(page), Some(fetched_at_ms));
                     cx.notify();
                 });
             }
             Err(err) => {
                 self.state.update(cx, |state, cx| {
-                    state.page.loading = false;
-                    state.page.error = Some(err);
+                    state.page.fail_preserving_cached(err);
                     cx.notify();
                 });
             }

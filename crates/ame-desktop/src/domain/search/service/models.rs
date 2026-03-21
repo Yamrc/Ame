@@ -1,10 +1,10 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchPage<T> {
     pub items: Vec<T>,
     pub has_more: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchSongItem {
     pub id: i64,
     pub name: String,
@@ -15,14 +15,14 @@ pub struct SearchSongItem {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchArtistItem {
     pub id: i64,
     pub name: String,
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchAlbumItem {
     pub id: i64,
     pub name: String,
@@ -30,7 +30,7 @@ pub struct SearchAlbumItem {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchPlaylistItem {
     pub id: i64,
     pub name: String,

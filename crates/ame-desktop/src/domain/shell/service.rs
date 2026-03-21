@@ -21,6 +21,6 @@ pub fn set_close_behavior<C: AppContext>(runtime: &AppRuntime, value: CloseBehav
     if let Some(settings) = runtime.services.settings_store.as_ref()
         && let Err(err) = settings.set(KEY_WINDOW_CLOSE_BEHAVIOR, &value)
     {
-        push_shell_error(runtime, format!("保存关闭行为失败: {err}"), cx);
+        push_shell_error(runtime, format!("Failed to save close behavior: {err}"), cx);
     }
 }

@@ -61,7 +61,7 @@ impl SearchPageRoute {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchSong {
     pub id: i64,
     pub name: String,
@@ -86,14 +86,14 @@ impl From<SearchSong> for player::QueueTrackInput {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchArtist {
     pub id: i64,
     pub name: String,
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchAlbum {
     pub id: i64,
     pub name: String,
@@ -101,7 +101,7 @@ pub struct SearchAlbum {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchPlaylist {
     pub id: i64,
     pub name: String,
@@ -110,7 +110,7 @@ pub struct SearchPlaylist {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SearchOverview {
     pub artists: Vec<SearchArtist>,
     pub albums: Vec<SearchAlbum>,
@@ -127,13 +127,13 @@ impl SearchOverview {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SearchPageSlice<T> {
     pub items: Vec<T>,
     pub has_more: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SearchTypePayload {
     Artists(SearchPageSlice<SearchArtist>),
     Albums(SearchPageSlice<SearchAlbum>),

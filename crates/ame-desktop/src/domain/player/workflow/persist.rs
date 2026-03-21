@@ -32,13 +32,13 @@ pub(super) fn persist_player_settings<T>(runtime: &AppRuntime, cx: &mut Context<
     let close_behavior = runtime.shell.read(cx).close_behavior;
     let mut errors = Vec::new();
     if let Err(err) = settings.set(KEY_PLAYER_VOLUME, &player.volume) {
-        errors.push(format!("保存音量失败: {err}"));
+        errors.push(format!("Failed to persist volume: {err}"));
     }
     if let Err(err) = settings.set(KEY_PLAYER_MODE, &player.mode) {
-        errors.push(format!("保存播放模式失败: {err}"));
+        errors.push(format!("Failed to persist playback mode: {err}"));
     }
     if let Err(err) = settings.set(KEY_WINDOW_CLOSE_BEHAVIOR, &close_behavior) {
-        errors.push(format!("保存关闭行为失败: {err}"));
+        errors.push(format!("Failed to persist close behavior: {err}"));
     }
     for err in errors {
         auth::push_shell_error(runtime, err, cx);
@@ -66,13 +66,13 @@ pub(super) fn persist_player_runtime<T>(runtime: &AppRuntime, cx: &mut Context<T
         .collect::<Vec<_>>();
 
     if let Err(err) = state.set(KEY_PLAYER_QUEUE, &queue) {
-        errors.push(format!("保存队列失败: {err}"));
+        errors.push(format!("Failed to persist queue: {err}"));
     }
     if let Err(err) = state.set(KEY_PLAYER_CURRENT_INDEX, &player.current_index) {
-        errors.push(format!("保存当前索引失败: {err}"));
+        errors.push(format!("Failed to persist current index: {err}"));
     }
     if let Err(err) = state.set(KEY_PLAYER_WAS_PLAYING, &player.is_playing) {
-        errors.push(format!("保存播放状态失败: {err}"));
+        errors.push(format!("Failed to persist playback state: {err}"));
     }
     for err in errors {
         auth::push_shell_error(runtime, err, cx);
@@ -86,10 +86,10 @@ pub(super) fn persist_player_progress<T>(runtime: &AppRuntime, cx: &mut Context<
     let player = runtime.player.read(cx).clone();
     let mut errors = Vec::new();
     if let Err(err) = state.set(KEY_PLAYER_POSITION_MS, &player.position_ms) {
-        errors.push(format!("保存播放进度失败: {err}"));
+        errors.push(format!("Failed to persist playback position: {err}"));
     }
     if let Err(err) = state.set(KEY_PLAYER_DURATION_MS, &player.duration_ms) {
-        errors.push(format!("保存播放时长失败: {err}"));
+        errors.push(format!("Failed to persist playback duration: {err}"));
     }
     for err in errors {
         auth::push_shell_error(runtime, err, cx);

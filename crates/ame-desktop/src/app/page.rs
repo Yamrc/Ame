@@ -32,7 +32,7 @@ pub trait PageLifecycle: Sized {
         _snapshot: PageSnapshot,
         _cx: &mut Context<Self>,
     ) -> Result<(), String> {
-        Err("页面不支持恢复快照".to_string())
+        Err("Page does not support snapshot restoration".to_string())
     }
 
     fn release_view_resources(&mut self, _cx: &mut Context<Self>) {}

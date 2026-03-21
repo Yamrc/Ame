@@ -1,20 +1,23 @@
 use nekowg::Context;
 use tracing::debug;
 
+use crate::domain::cache::CacheLookup;
 use crate::domain::session as auth_actions;
 use crate::page::library::models::LibraryLoadResult;
-use crate::page::library::service::fetch_library_payload;
+use crate::page::library::service::{
+    fetch_library_payload, read_library_payload_cache, store_library_payload_cache,
+};
 use crate::page::state::DataSource;
 
 use super::LibraryPageView;
 
 impl LibraryPageView {
     pub(super) fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
-        self.load(false, cx);
+        self.load(cx);
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
-        self.load(true, cx);
+        self.load(cx);
     }
 
     pub(super) fn handle_session_change(&mut self, cx: &mut Context<Self>) {
@@ -22,7 +25,7 @@ impl LibraryPageView {
         let changed = self.observed_user_id != user_id;
         self.observed_user_id = user_id;
 
-        if changed {
+        if changed && !self.active {
             self.clear_state(cx);
         }
 
@@ -37,20 +40,47 @@ impl LibraryPageView {
         }
     }
 
-    fn load(&mut self, force: bool, cx: &mut Context<Self>) {
+    fn load(&mut self, cx: &mut Context<Self>) {
         let session = self.runtime.session.read(cx).clone();
         let Some(user_id) = session.auth_user_id else {
-            self.clear_state(cx);
+            self.state.update(cx, |state, cx| {
+                state
+                    .playlists
+                    .fail_preserving_cached("Missing user identity");
+                state
+                    .liked_tracks
+                    .fail_preserving_cached("Missing user identity");
+                cx.notify();
+            });
             return;
         };
 
-        let mut state = self.state.read(cx).clone();
-        if !force {
-            if state.playlists.loading {
+        let mut used_stale_cache = false;
+        if self.state.read(cx).playlists.loading {
+            return;
+        }
+        match read_library_payload_cache(&self.runtime, user_id) {
+            Ok(CacheLookup::Fresh(cached)) => {
+                self.apply_loaded_library(
+                    user_id,
+                    Ok(cached.value),
+                    Some(cached.fetched_at_ms),
+                    cx,
+                );
                 return;
             }
-            if state.playlists.fetched_at_ms.is_some() {
-                return;
+            Ok(CacheLookup::Stale(cached)) => {
+                self.apply_loaded_library(
+                    user_id,
+                    Ok(cached.value),
+                    Some(cached.fetched_at_ms),
+                    cx,
+                );
+                used_stale_cache = true;
+            }
+            Ok(CacheLookup::Miss) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, "library cache read failed");
             }
         }
 
@@ -61,24 +91,37 @@ impl LibraryPageView {
             .filter(|value| !value.trim().is_empty())
             .and_then(|_| auth_actions::build_cookie_header(&session.auth_bundle))
         else {
-            state.playlists.clear();
-            state.playlists.fail("缺少鉴权凭据");
-            state.liked_tracks.clear();
-            state.liked_lyric_lines.clear();
-            self.state.update(cx, |page_state, cx| {
-                *page_state = state;
+            self.state.update(cx, |state, cx| {
+                state
+                    .playlists
+                    .fail_preserving_cached("Missing auth credentials");
+                state
+                    .liked_tracks
+                    .fail_preserving_cached("Missing auth credentials");
+                if !state.liked_tracks.has_cached_value() {
+                    state.liked_lyric_lines.clear();
+                }
                 cx.notify();
             });
             return;
         };
 
-        state.playlists.begin(DataSource::User);
-        state.liked_tracks.begin(DataSource::User);
-        state.liked_lyric_lines.clear();
-        self.state.update(cx, |page_state, cx| {
-            *page_state = state;
-            cx.notify();
-        });
+        if used_stale_cache {
+            self.state.update(cx, |state, cx| {
+                state.playlists.revalidate();
+                state.playlists.source = DataSource::User;
+                state.liked_tracks.revalidate();
+                state.liked_tracks.source = DataSource::User;
+                cx.notify();
+            });
+        } else {
+            self.state.update(cx, |state, cx| {
+                state.playlists.begin(DataSource::User);
+                state.liked_tracks.begin(DataSource::User);
+                state.liked_lyric_lines.clear();
+                cx.notify();
+            });
+        }
 
         let page = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
@@ -88,7 +131,7 @@ impl LibraryPageView {
                 .await;
 
             if let Err(err) = page.update(cx, |this, cx| {
-                this.apply_loaded_library(user_id, result, cx);
+                this.apply_loaded_library(user_id, result, None, cx);
             }) {
                 debug!("library page load dropped before apply: {err}");
             }
@@ -100,6 +143,7 @@ impl LibraryPageView {
         &mut self,
         user_id: i64,
         result: Result<LibraryLoadResult, String>,
+        cached_fetched_at_ms: Option<u64>,
         cx: &mut Context<Self>,
     ) {
         if self.runtime.session.read(cx).auth_user_id != Some(user_id) {
@@ -109,20 +153,25 @@ impl LibraryPageView {
         self.state.update(cx, |library, cx| {
             match result {
                 Ok(result) => {
+                    let fetched_at_ms = cached_fetched_at_ms.unwrap_or_else(|| {
+                        store_library_payload_cache(&self.runtime, user_id, &result)
+                            .unwrap_or(result.fetched_at_ms)
+                    });
                     library
                         .playlists
-                        .succeed(result.playlists, Some(result.fetched_at_ms));
+                        .succeed(result.playlists, Some(fetched_at_ms));
                     library
                         .liked_tracks
-                        .succeed(result.liked_tracks, Some(result.fetched_at_ms));
+                        .succeed(result.liked_tracks, Some(fetched_at_ms));
                     library.liked_lyric_lines = result.liked_lyric_lines;
                 }
                 Err(err) => {
-                    library.playlists.clear();
-                    library.playlists.fail(err.clone());
-                    library.liked_tracks.clear();
-                    library.liked_tracks.fail(err);
-                    library.liked_lyric_lines.clear();
+                    library.playlists.fail_preserving_cached(err.clone());
+                    let had_cached_tracks = library.liked_tracks.has_cached_value();
+                    library.liked_tracks.fail_preserving_cached(err);
+                    if !had_cached_tracks {
+                        library.liked_lyric_lines.clear();
+                    }
                 }
             }
             cx.notify();

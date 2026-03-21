@@ -15,6 +15,7 @@ ame-core = { path = "../ame-core" }
 ame-audio = { path = "../ame-audio" }
 ame-netease = { path = "../ame-netease" }
 anyhow.workspace = true
+blake3.workspace = true
 dashmap.workspace = true
 parking_lot.workspace = true
 smol.workspace = true

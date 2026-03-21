@@ -86,6 +86,7 @@ dependencies = [
  "ame-core",
  "ame-netease",
  "anyhow",
+ "blake3",
  "dashmap",
  "dirs 6.0.0",
  "futures",
@@ -124,6 +125,7 @@ name = "ame-core"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "keyring",
  "redb",
  "serde",
@@ -712,6 +714,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2468ef7d57b3fb7e16b576e8377cdbde2320c60e1491e961d11da40fc4f02a2d"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.2.17",
+]
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1118,6 +1134,12 @@ name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "constant_time_eq"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "convert_case"

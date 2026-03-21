@@ -27,12 +27,13 @@ fn fetch_guest_bundle(mut bundle: AuthBundle) -> Result<AuthBundle, String> {
     if bundle_has_guest_token(&bundle) {
         Ok(bundle)
     } else {
-        Err("游客登录返回成功但未拿到 MUSIC_A".to_string())
+        Err("Guest login succeeded but MUSIC_A was missing".to_string())
     }
 }
 
 pub fn ensure_guest_session<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let bundle = runtime.session.read(cx).auth_bundle.clone();
+    let old_user_id = runtime.session.read(cx).auth_user_id;
     let loading = runtime.session.read(cx).guest_loading;
     if loading || bundle_has_guest_token(&bundle) {
         return;
@@ -62,11 +63,17 @@ pub fn ensure_guest_session<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T
                 });
                 if changed {
                     auth::persist_auth_bundle(&runtime, cx);
+                    auth::invalidate_firework_for_identity_transition(
+                        &runtime,
+                        old_user_id,
+                        None,
+                        cx,
+                    );
                 }
                 if !bundle_has_guest_token(&bundle) {
                     auth::push_shell_error(
                         &runtime,
-                        "游客登录返回成功但未拿到 MUSIC_A".to_string(),
+                        "Guest login succeeded but MUSIC_A was missing".to_string(),
                         cx,
                     );
                 }
@@ -75,7 +82,7 @@ pub fn ensure_guest_session<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T
                 runtime.session.update(cx, |session, _| {
                     session.guest_loading = false;
                 });
-                auth::push_shell_error(&runtime, format!("游客登录失败: {err}"), cx);
+                auth::push_shell_error(&runtime, format!("Guest login failed: {err}"), cx);
             }
         }
     })

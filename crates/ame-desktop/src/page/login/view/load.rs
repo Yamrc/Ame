@@ -16,7 +16,7 @@ impl LoginPageView {
         let response = match auth::fetch_login_qr_key_blocking(Some(cookie.as_str())) {
             Ok(response) => response,
             Err(err) => {
-                auth::push_shell_error(&self.runtime, format!("获取二维码 key 失败: {err}"), cx);
+                auth::push_shell_error(&self.runtime, format!("Failed to fetch QR key: {err}"), cx);
                 return;
             }
         };
@@ -27,7 +27,7 @@ impl LoginPageView {
             .clone()
             .filter(|value| !value.is_empty());
         let Some(key) = key else {
-            auth::push_shell_error(&self.runtime, "二维码 key 为空".to_string(), cx);
+            auth::push_shell_error(&self.runtime, "QR key is empty".to_string(), cx);
             return;
         };
 
@@ -44,7 +44,11 @@ impl LoginPageView {
                 )))
             }
             Err(err) => {
-                auth::push_shell_error(&self.runtime, format!("渲染二维码失败: {err}"), cx);
+                auth::push_shell_error(
+                    &self.runtime,
+                    format!("Failed to render QR code: {err}"),
+                    cx,
+                );
                 None
             }
         };
@@ -53,7 +57,7 @@ impl LoginPageView {
             login.qr_key = Some(key);
             login.qr_url = Some(qr_url);
             login.qr_image = image_data;
-            login.qr_status = Some("801 等待扫码".to_string());
+            login.qr_status = Some("801 waiting for scan".to_string());
             login.qr_polling = true;
             login.qr_poll_started_at = Some(Instant::now());
             login.qr_last_polled_at = None;
@@ -96,7 +100,7 @@ impl LoginPageView {
     pub(super) fn stop_login_qr_polling(&mut self, cx: &mut Context<Self>) {
         self.state.update(cx, |login, cx| {
             login.qr_polling = false;
-            login.qr_status = Some("已停止轮询".to_string());
+            login.qr_status = Some("Polling stopped".to_string());
             cx.notify();
         });
     }
@@ -112,7 +116,7 @@ impl LoginPageView {
         {
             self.state.update(cx, |login, cx| {
                 login.qr_polling = false;
-                login.qr_status = Some("800 二维码过期".to_string());
+                login.qr_status = Some("800 QR code expired".to_string());
                 cx.notify();
             });
             return false;
@@ -127,7 +131,7 @@ impl LoginPageView {
         let Some(key) = login.qr_key.clone() else {
             self.state.update(cx, |login, cx| {
                 login.qr_polling = false;
-                login.qr_status = Some("二维码 key 丢失".to_string());
+                login.qr_status = Some("QR key is missing".to_string());
                 cx.notify();
             });
             return false;
@@ -153,26 +157,26 @@ impl LoginPageView {
                     800 => {
                         self.state.update(cx, |login, cx| {
                             login.qr_polling = false;
-                            login.qr_status = Some("800 二维码过期".to_string());
+                            login.qr_status = Some("800 QR code expired".to_string());
                             cx.notify();
                         });
                     }
                     801 => {
                         self.state.update(cx, |login, cx| {
-                            login.qr_status = Some("801 等待扫码".to_string());
+                            login.qr_status = Some("801 waiting for scan".to_string());
                             cx.notify();
                         });
                     }
                     802 => {
                         self.state.update(cx, |login, cx| {
-                            login.qr_status = Some("802 待确认".to_string());
+                            login.qr_status = Some("802 waiting for confirmation".to_string());
                             cx.notify();
                         });
                     }
                     803 => {
                         self.state.update(cx, |login, cx| {
                             login.qr_polling = false;
-                            login.qr_status = Some("803 登录成功".to_string());
+                            login.qr_status = Some("803 login succeeded".to_string());
                             cx.notify();
                         });
                         auth::merge_auth_cookies(&self.runtime, &response.set_cookie, cx);
@@ -180,14 +184,18 @@ impl LoginPageView {
                     }
                     value => {
                         self.state.update(cx, |login, cx| {
-                            login.qr_status = Some(format!("{value} 登录状态未知"));
+                            login.qr_status = Some(format!("{value} unknown login status"));
                             cx.notify();
                         });
                     }
                 }
             }
             Err(err) => {
-                auth::push_shell_error(&self.runtime, format!("二维码状态轮询失败: {err}"), cx);
+                auth::push_shell_error(
+                    &self.runtime,
+                    format!("Failed to poll QR status: {err}"),
+                    cx,
+                );
             }
         }
 

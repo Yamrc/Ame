@@ -21,7 +21,7 @@ pub struct HomeArtistCard {
     pub cover_url: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HomeLoadResult {
     pub recommend_playlists: Vec<library_actions::LibraryPlaylistItem>,
     pub recommend_artists: Vec<library_actions::ArtistItem>,

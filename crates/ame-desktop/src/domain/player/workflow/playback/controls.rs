@@ -20,8 +20,8 @@ pub fn set_volume_absolute<T>(runtime: &AppRuntime, volume: f32, cx: &mut Contex
     });
     match with_audio_bridge(runtime, |audio| audio.send(AudioCommand::SetVolume(volume))) {
         Ok(Ok(_)) => {}
-        Ok(Err(err)) => auth::push_shell_error(runtime, format!("设置音量失败: {err}"), cx),
-        Err(err) => auth::push_shell_error(runtime, format!("设置音量失败: {err}"), cx),
+        Ok(Err(err)) => auth::push_shell_error(runtime, format!("Failed to set volume: {err}"), cx),
+        Err(err) => auth::push_shell_error(runtime, format!("Failed to set volume: {err}"), cx),
     }
     persist_player_settings(runtime, cx);
 }
@@ -43,8 +43,10 @@ pub fn commit_seek_ratio<T>(runtime: &AppRuntime, ratio: f32, cx: &mut Context<T
         audio.send(AudioCommand::Seek(SeekTarget::ms(target_ms)))
     }) {
         Ok(Ok(_)) => {}
-        Ok(Err(err)) => auth::push_shell_error(runtime, format!("拖动进度失败: {err}"), cx),
-        Err(err) => auth::push_shell_error(runtime, format!("拖动进度失败: {err}"), cx),
+        Ok(Err(err)) => {
+            auth::push_shell_error(runtime, format!("Failed to seek playback: {err}"), cx)
+        }
+        Err(err) => auth::push_shell_error(runtime, format!("Failed to seek playback: {err}"), cx),
     }
     runtime.player.update(cx, |player, cx| {
         player.position_ms = target_ms;
@@ -67,8 +69,16 @@ pub fn toggle_playback<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     if is_playing {
         match with_audio_bridge(runtime, |audio| audio.send(AudioCommand::Pause)) {
             Ok(Ok(_)) => {}
-            Ok(Err(err)) => auth::set_shell_error(runtime, Some(format!("暂停失败: {err}")), cx),
-            Err(err) => auth::set_shell_error(runtime, Some(format!("暂停失败: {err}")), cx),
+            Ok(Err(err)) => auth::set_shell_error(
+                runtime,
+                Some(format!("Failed to pause playback: {err}")),
+                cx,
+            ),
+            Err(err) => auth::set_shell_error(
+                runtime,
+                Some(format!("Failed to pause playback: {err}")),
+                cx,
+            ),
         }
         runtime.player.update(cx, |player, cx| {
             player.is_playing = false;
@@ -88,11 +98,19 @@ pub fn toggle_playback<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     }) {
         Ok(Ok(resumed)) => resumed,
         Ok(Err(err)) => {
-            auth::set_shell_error(runtime, Some(format!("恢复播放失败: {err}")), cx);
+            auth::set_shell_error(
+                runtime,
+                Some(format!("Failed to resume playback: {err}")),
+                cx,
+            );
             false
         }
         Err(err) => {
-            auth::set_shell_error(runtime, Some(format!("恢复播放失败: {err}")), cx);
+            auth::set_shell_error(
+                runtime,
+                Some(format!("Failed to resume playback: {err}")),
+                cx,
+            );
             false
         }
     };
@@ -106,7 +124,7 @@ pub fn toggle_playback<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
         return;
     }
 
-    if with_audio_bridge_or_error(runtime, cx, "播放失败", |_| {}).is_none() {
+    if with_audio_bridge_or_error(runtime, cx, "Playback failed", |_| {}).is_none() {
         return;
     }
 
@@ -168,7 +186,7 @@ pub fn sync_audio_bridge<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     });
 
     if let Err(err) = handled {
-        set_shell_error_if_changed(runtime, format!("音频同步失败: {err}"), cx);
+        set_shell_error_if_changed(runtime, format!("Failed to sync audio state: {err}"), cx);
         return;
     }
 
@@ -199,9 +217,15 @@ pub fn prepare_app_exit<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     persist_player_progress(runtime, cx);
     match with_audio_bridge(runtime, |audio| audio.send(AudioCommand::Stop)) {
         Ok(Ok(_)) => {}
-        Ok(Err(err)) => {
-            auth::set_shell_error(runtime, Some(format!("退出前停止播放失败: {err}")), cx)
-        }
-        Err(err) => auth::set_shell_error(runtime, Some(format!("退出前停止播放失败: {err}")), cx),
+        Ok(Err(err)) => auth::set_shell_error(
+            runtime,
+            Some(format!("Failed to stop playback before exit: {err}")),
+            cx,
+        ),
+        Err(err) => auth::set_shell_error(
+            runtime,
+            Some(format!("Failed to stop playback before exit: {err}")),
+            cx,
+        ),
     }
 }

@@ -1,5 +1,6 @@
 mod fetch;
 mod sections;
+mod service;
 mod state;
 mod types;
 mod view;

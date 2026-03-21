@@ -118,19 +118,13 @@ impl HomePageView {
 
     fn fail_state(&mut self, error: &str, has_user_token: bool, cx: &mut Context<Self>) {
         self.state.update(cx, |state, cx| {
-            state.recommend_playlists.clear();
-            state.recommend_playlists.fail(error);
-            state.recommend_artists.clear();
-            state.recommend_artists.fail(error);
-            state.new_albums.clear();
-            state.new_albums.fail(error);
-            state.toplists.clear();
-            state.toplists.fail(error);
+            state.recommend_playlists.fail_preserving_cached(error);
+            state.recommend_artists.fail_preserving_cached(error);
+            state.new_albums.fail_preserving_cached(error);
+            state.toplists.fail_preserving_cached(error);
             if has_user_token {
-                state.daily_tracks.clear();
-                state.daily_tracks.fail(error);
-                state.personal_fm.clear();
-                state.personal_fm.fail(error);
+                state.daily_tracks.fail_preserving_cached(error);
+                state.personal_fm.fail_preserving_cached(error);
             } else {
                 state.daily_tracks.clear();
                 state.personal_fm.clear();

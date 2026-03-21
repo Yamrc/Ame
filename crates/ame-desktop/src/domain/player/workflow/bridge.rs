@@ -9,11 +9,11 @@ pub(super) fn with_audio_bridge<R>(
     f: impl FnOnce(&mut AudioBridgeEntity) -> R,
 ) -> Result<R, String> {
     let Some(bridge) = runtime.services.audio_bridge.as_ref() else {
-        return Err("音频桥未初始化".to_string());
+        return Err("Audio bridge is not initialized".to_string());
     };
     let mut guard = bridge
         .lock()
-        .map_err(|err| format!("锁定音频桥失败: {err}"))?;
+        .map_err(|err| format!("Failed to lock audio bridge: {err}"))?;
     Ok(f(&mut guard))
 }
 

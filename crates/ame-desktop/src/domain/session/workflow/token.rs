@@ -9,7 +9,7 @@ pub fn refresh_login_token<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>
     if !auth::has_user_token(runtime, cx) {
         auth::push_shell_error(
             runtime,
-            "当前不是账号登录态，无法刷新登录令牌".to_string(),
+            "Current session is not an account login; cannot refresh login token".to_string(),
             cx,
         );
         return;
@@ -25,7 +25,7 @@ pub fn refresh_login_token<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>
             refresh_login_summary(runtime, cx);
         }
         Err(err) => {
-            auth::push_shell_error(runtime, format!("刷新登录令牌失败: {err}"), cx);
+            auth::push_shell_error(runtime, format!("Failed to refresh login token: {err}"), cx);
         }
     }
 }

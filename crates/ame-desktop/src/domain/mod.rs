@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod library;
 pub mod player;
 pub mod runtime;

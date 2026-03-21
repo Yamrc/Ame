@@ -1,6 +1,6 @@
 use crate::domain::library::LibraryPlaylistItem;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LibraryLoadResult {
     pub playlists: Vec<LibraryPlaylistItem>,
     pub liked_tracks: Vec<crate::domain::library::PlaylistTrackItem>,

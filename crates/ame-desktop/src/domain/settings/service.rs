@@ -25,6 +25,10 @@ pub fn set_home_artist_language<C: AppContext>(
     if let Some(settings) = runtime.services.settings_store.as_ref()
         && let Err(err) = settings.set(KEY_HOME_ARTIST_LANGUAGE, &value)
     {
-        push_shell_error(runtime, format!("保存首页艺人语种失败: {err}"), cx);
+        push_shell_error(
+            runtime,
+            format!("Failed to save home artist language: {err}"),
+            cx,
+        );
     }
 }

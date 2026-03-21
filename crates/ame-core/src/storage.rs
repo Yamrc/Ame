@@ -2,132 +2,368 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::error::{CoreError, Result};
 
-const DB_FILE_NAME: &str = "app.redb";
-const SETTINGS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("settings");
-const STATE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("state");
-const CACHE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("cache");
+const SETTINGS_DB_FILE_NAME: &str = "settings.redb";
+const STATE_DB_FILE_NAME: &str = "state.redb";
+const FIREWORK_DB_FILE_NAME: &str = "firework.redb";
+const WEATHER_DB_FILE_NAME: &str = "weather.redb";
+const GEOLOGICAL_DB_FILE_NAME: &str = "geological.redb";
+
+const KV_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("kv");
+const NETWORK_META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("meta");
+const NETWORK_INLINE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("inline");
+const NETWORK_KEY_TAGS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("key_tags");
+const NETWORK_TAG_INDEX_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("tag_index");
+
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct AppStorage {
-    db: Arc<Database>,
+    settings: SettingsStorage,
+    state: StateStorage,
+    firework: NetworkCacheBucketStorage,
+    weather: NetworkCacheBucketStorage,
+    geological: NetworkCacheBucketStorage,
+    response_dir: PathBuf,
 }
 
 impl AppStorage {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let db_path = normalize_db_path(path.as_ref());
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(storage_err)?;
-        }
-        let db = open_database_file(&db_path)?;
-        Ok(Self { db })
+    pub fn open(base_dir: impl AsRef<Path>) -> Result<Self> {
+        let paths = StoragePaths::from_root(base_dir.as_ref());
+        paths.create_dirs()?;
+
+        Ok(Self {
+            settings: SettingsStorage::new(open_db_with_tables(
+                &paths.settings_db,
+                &[InitTableKind::Kv],
+            )?),
+            state: StateStorage::new(open_db_with_tables(&paths.state_db, &[InitTableKind::Kv])?),
+            firework: NetworkCacheBucketStorage::new(
+                open_db_with_tables(
+                    &paths.firework_db,
+                    &[
+                        InitTableKind::NetworkMeta,
+                        InitTableKind::NetworkInline,
+                        InitTableKind::NetworkKeyTags,
+                        InitTableKind::NetworkTagIndex,
+                    ],
+                )?,
+                "firework",
+            ),
+            weather: NetworkCacheBucketStorage::new(
+                open_db_with_tables(
+                    &paths.weather_db,
+                    &[
+                        InitTableKind::NetworkMeta,
+                        InitTableKind::NetworkInline,
+                        InitTableKind::NetworkKeyTags,
+                        InitTableKind::NetworkTagIndex,
+                    ],
+                )?,
+                "weather",
+            ),
+            geological: NetworkCacheBucketStorage::new(
+                open_db_with_tables(
+                    &paths.geological_db,
+                    &[
+                        InitTableKind::NetworkMeta,
+                        InitTableKind::NetworkInline,
+                        InitTableKind::NetworkKeyTags,
+                        InitTableKind::NetworkTagIndex,
+                    ],
+                )?,
+                "geological",
+            ),
+            response_dir: paths.response_dir,
+        })
     }
 
     pub fn temporary() -> Result<Self> {
-        let base = std::env::temp_dir().join("ame-redb");
+        let base = std::env::temp_dir().join("ame-storage");
         std::fs::create_dir_all(&base).map_err(storage_err)?;
         let pid = std::process::id();
         let seq = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let db_path = base.join(format!("temp-{pid}-{seq}.redb"));
-        let _ = std::fs::remove_file(&db_path);
-        let db = open_database_file(&db_path)?;
-        Ok(Self { db })
+        let temp_dir = base.join(format!("temp-{pid}-{seq}"));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        Self::open(temp_dir)
     }
 
-    pub fn settings(&self) -> Result<SettingsStore> {
-        Ok(SettingsStore::new(self.db.clone()))
+    pub fn settings(&self) -> SettingsStorage {
+        self.settings.clone()
     }
 
-    pub fn state(&self) -> Result<StateStore> {
-        Ok(StateStore::new(self.db.clone()))
+    pub fn state(&self) -> StateStorage {
+        self.state.clone()
     }
 
-    pub fn cache(&self) -> Result<CacheIndexStore> {
-        Ok(CacheIndexStore::new(self.db.clone()))
+    pub fn firework(&self) -> NetworkCacheBucketStorage {
+        self.firework.clone()
+    }
+
+    pub fn weather(&self) -> NetworkCacheBucketStorage {
+        self.weather.clone()
+    }
+
+    pub fn geological(&self) -> NetworkCacheBucketStorage {
+        self.geological.clone()
+    }
+
+    pub fn response_dir(&self) -> &Path {
+        &self.response_dir
     }
 }
 
 #[derive(Clone)]
-pub struct SettingsStore {
+pub struct SettingsStorage {
     db: Arc<Database>,
 }
 
-impl SettingsStore {
+impl SettingsStorage {
     fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 
     pub fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
-        set_json(&self.db, SETTINGS_TABLE, key, value)
+        set_json(&self.db, KV_TABLE, key, value)
     }
 
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        get_json(&self.db, SETTINGS_TABLE, key)
+        get_json(&self.db, KV_TABLE, key)
     }
 }
 
 #[derive(Clone)]
-pub struct StateStore {
+pub struct StateStorage {
     db: Arc<Database>,
 }
 
-impl StateStore {
+impl StateStorage {
     fn new(db: Arc<Database>) -> Self {
         Self { db }
     }
 
     pub fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
-        set_json(&self.db, STATE_TABLE, key, value)
+        set_json(&self.db, KV_TABLE, key, value)
     }
 
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        get_json(&self.db, STATE_TABLE, key)
+        get_json(&self.db, KV_TABLE, key)
     }
 
     pub fn remove(&self, key: &str) -> Result<()> {
-        remove_value(&self.db, STATE_TABLE, key)
+        remove_value(&self.db, KV_TABLE, key)
     }
 }
 
 #[derive(Clone)]
-pub struct CacheIndexStore {
+pub struct NetworkCacheBucketStorage {
     db: Arc<Database>,
+    bucket_name: &'static str,
 }
 
-impl CacheIndexStore {
-    fn new(db: Arc<Database>) -> Self {
-        Self { db }
+impl NetworkCacheBucketStorage {
+    fn new(db: Arc<Database>, bucket_name: &'static str) -> Self {
+        Self { db, bucket_name }
     }
 
-    pub fn upsert<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
-        set_json(&self.db, CACHE_TABLE, key, value)
+    pub fn bucket_name(&self) -> &'static str {
+        self.bucket_name
     }
 
-    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        get_json(&self.db, CACHE_TABLE, key)
+    pub fn set_meta<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
+        set_json(&self.db, NETWORK_META_TABLE, key, value)
+    }
+
+    pub fn get_meta<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+        get_json(&self.db, NETWORK_META_TABLE, key)
+    }
+
+    pub fn iter_meta<T: DeserializeOwned>(&self) -> Result<Vec<(String, T)>> {
+        iter_json(&self.db, NETWORK_META_TABLE)
+    }
+
+    pub fn set_inline_body(&self, key: &str, body: &[u8]) -> Result<()> {
+        set_bytes(&self.db, NETWORK_INLINE_TABLE, key, body)
+    }
+
+    pub fn get_inline_body(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        get_bytes(&self.db, NETWORK_INLINE_TABLE, key)
+    }
+
+    pub fn replace_tags(&self, key: &str, tags: &[String]) -> Result<()> {
+        let previous = self.get_key_tags(key)?;
+        let write_txn = self.db.begin_write().map_err(storage_err)?;
+        {
+            let mut key_tags = write_txn
+                .open_table(NETWORK_KEY_TAGS_TABLE)
+                .map_err(storage_err)?;
+            let mut tag_index = write_txn
+                .open_table(NETWORK_TAG_INDEX_TABLE)
+                .map_err(storage_err)?;
+
+            for tag in previous {
+                let composite = tag_index_key(&tag, key);
+                let _ = tag_index.remove(composite.as_str()).map_err(storage_err)?;
+            }
+
+            if tags.is_empty() {
+                let _ = key_tags.remove(key).map_err(storage_err)?;
+            } else {
+                let payload = serde_json::to_vec(tags)?;
+                key_tags
+                    .insert(key, payload.as_slice())
+                    .map_err(storage_err)?;
+                for tag in tags {
+                    let composite = tag_index_key(tag, key);
+                    tag_index
+                        .insert(composite.as_str(), &[] as &[u8])
+                        .map_err(storage_err)?;
+                }
+            }
+        }
+        write_txn.commit().map_err(storage_err)?;
+        Ok(())
+    }
+
+    pub fn get_key_tags(&self, key: &str) -> Result<Vec<String>> {
+        Ok(get_json(&self.db, NETWORK_KEY_TAGS_TABLE, key)?.unwrap_or_default())
+    }
+
+    pub fn keys_for_tag(&self, tag: &str) -> Result<Vec<String>> {
+        let prefix = format!("{tag}\u{1f}");
+        let read_txn = self.db.begin_read().map_err(storage_err)?;
+        let table = read_txn
+            .open_table(NETWORK_TAG_INDEX_TABLE)
+            .map_err(storage_err)?;
+        let iter = table.iter().map_err(storage_err)?;
+        let mut keys = Vec::new();
+        for entry in iter {
+            let (raw_key, _) = entry.map_err(storage_err)?;
+            let raw_key = raw_key.value();
+            if raw_key.starts_with(&prefix) {
+                keys.push(raw_key[prefix.len()..].to_string());
+            }
+        }
+        Ok(keys)
+    }
+
+    pub fn remove(&self, key: &str) -> Result<()> {
+        let tags = self.get_key_tags(key)?;
+        let write_txn = self.db.begin_write().map_err(storage_err)?;
+        {
+            let mut meta = write_txn
+                .open_table(NETWORK_META_TABLE)
+                .map_err(storage_err)?;
+            let mut inline = write_txn
+                .open_table(NETWORK_INLINE_TABLE)
+                .map_err(storage_err)?;
+            let mut key_tags = write_txn
+                .open_table(NETWORK_KEY_TAGS_TABLE)
+                .map_err(storage_err)?;
+            let mut tag_index = write_txn
+                .open_table(NETWORK_TAG_INDEX_TABLE)
+                .map_err(storage_err)?;
+
+            let _ = meta.remove(key).map_err(storage_err)?;
+            let _ = inline.remove(key).map_err(storage_err)?;
+            let _ = key_tags.remove(key).map_err(storage_err)?;
+            for tag in tags {
+                let composite = tag_index_key(&tag, key);
+                let _ = tag_index.remove(composite.as_str()).map_err(storage_err)?;
+            }
+        }
+        write_txn.commit().map_err(storage_err)?;
+        Ok(())
     }
 }
 
-fn normalize_db_path(path: &Path) -> PathBuf {
-    if path.extension().and_then(|ext| ext.to_str()) == Some("redb") {
-        return path.to_path_buf();
-    }
-    path.join(DB_FILE_NAME)
+#[derive(Debug, Clone)]
+struct StoragePaths {
+    settings_db: PathBuf,
+    state_db: PathBuf,
+    firework_db: PathBuf,
+    weather_db: PathBuf,
+    geological_db: PathBuf,
+    response_dir: PathBuf,
 }
 
-fn open_database_file(path: &Path) -> Result<Arc<Database>> {
+impl StoragePaths {
+    fn from_root(root: &Path) -> Self {
+        let data_dir = root.join("data");
+        let cache_dir = data_dir.join("cache");
+        Self {
+            settings_db: data_dir.join(SETTINGS_DB_FILE_NAME),
+            state_db: data_dir.join(STATE_DB_FILE_NAME),
+            firework_db: cache_dir.join(FIREWORK_DB_FILE_NAME),
+            weather_db: cache_dir.join(WEATHER_DB_FILE_NAME),
+            geological_db: cache_dir.join(GEOLOGICAL_DB_FILE_NAME),
+            response_dir: cache_dir.join("response"),
+        }
+    }
+
+    fn create_dirs(&self) -> Result<()> {
+        for dir in [
+            self.settings_db.parent(),
+            self.firework_db.parent(),
+            Some(self.response_dir.as_path()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            std::fs::create_dir_all(dir).map_err(storage_err)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+enum InitTableKind {
+    Kv,
+    NetworkMeta,
+    NetworkInline,
+    NetworkKeyTags,
+    NetworkTagIndex,
+}
+
+fn open_db_with_tables(path: &Path, tables: &[InitTableKind]) -> Result<Arc<Database>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(storage_err)?;
+    }
     let db = Database::create(path).map_err(storage_err)?;
     let write_txn = db.begin_write().map_err(storage_err)?;
     {
-        let _ = write_txn.open_table(SETTINGS_TABLE).map_err(storage_err)?;
-        let _ = write_txn.open_table(STATE_TABLE).map_err(storage_err)?;
-        let _ = write_txn.open_table(CACHE_TABLE).map_err(storage_err)?;
+        for table in tables {
+            match table {
+                InitTableKind::Kv => {
+                    let _ = write_txn.open_table(KV_TABLE).map_err(storage_err)?;
+                }
+                InitTableKind::NetworkMeta => {
+                    let _ = write_txn
+                        .open_table(NETWORK_META_TABLE)
+                        .map_err(storage_err)?;
+                }
+                InitTableKind::NetworkInline => {
+                    let _ = write_txn
+                        .open_table(NETWORK_INLINE_TABLE)
+                        .map_err(storage_err)?;
+                }
+                InitTableKind::NetworkKeyTags => {
+                    let _ = write_txn
+                        .open_table(NETWORK_KEY_TAGS_TABLE)
+                        .map_err(storage_err)?;
+                }
+                InitTableKind::NetworkTagIndex => {
+                    let _ = write_txn
+                        .open_table(NETWORK_TAG_INDEX_TABLE)
+                        .map_err(storage_err)?;
+                }
+            }
+        }
     }
     write_txn.commit().map_err(storage_err)?;
     Ok(Arc::new(db))
@@ -140,15 +376,7 @@ fn set_json<T: Serialize>(
     value: &T,
 ) -> Result<()> {
     let payload = serde_json::to_vec(value)?;
-    let write_txn = db.begin_write().map_err(storage_err)?;
-    {
-        let mut bucket = write_txn.open_table(table).map_err(storage_err)?;
-        bucket
-            .insert(key, payload.as_slice())
-            .map_err(storage_err)?;
-    }
-    write_txn.commit().map_err(storage_err)?;
-    Ok(())
+    set_bytes(db, table, key, payload.as_slice())
 }
 
 fn get_json<T: DeserializeOwned>(
@@ -156,13 +384,54 @@ fn get_json<T: DeserializeOwned>(
     table: TableDefinition<&str, &[u8]>,
     key: &str,
 ) -> Result<Option<T>> {
+    let Some(payload) = get_bytes(db, table, key)? else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::from_slice(&payload)?))
+}
+
+fn iter_json<T: DeserializeOwned>(
+    db: &Database,
+    table: TableDefinition<&str, &[u8]>,
+) -> Result<Vec<(String, T)>> {
+    let read_txn = db.begin_read().map_err(storage_err)?;
+    let bucket = read_txn.open_table(table).map_err(storage_err)?;
+    let iter = bucket.iter().map_err(storage_err)?;
+    let mut items = Vec::new();
+    for entry in iter {
+        let (key, value) = entry.map_err(storage_err)?;
+        let payload: T = serde_json::from_slice(value.value())?;
+        items.push((key.value().to_string(), payload));
+    }
+    Ok(items)
+}
+
+fn set_bytes(
+    db: &Database,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+    value: &[u8],
+) -> Result<()> {
+    let write_txn = db.begin_write().map_err(storage_err)?;
+    {
+        let mut bucket = write_txn.open_table(table).map_err(storage_err)?;
+        bucket.insert(key, value).map_err(storage_err)?;
+    }
+    write_txn.commit().map_err(storage_err)?;
+    Ok(())
+}
+
+fn get_bytes(
+    db: &Database,
+    table: TableDefinition<&str, &[u8]>,
+    key: &str,
+) -> Result<Option<Vec<u8>>> {
     let read_txn = db.begin_read().map_err(storage_err)?;
     let bucket = read_txn.open_table(table).map_err(storage_err)?;
     let Some(raw) = bucket.get(key).map_err(storage_err)? else {
         return Ok(None);
     };
-    let payload: &[u8] = raw.value();
-    Ok(Some(serde_json::from_slice(payload)?))
+    Ok(Some(raw.value().to_vec()))
 }
 
 fn remove_value(db: &Database, table: TableDefinition<&str, &[u8]>, key: &str) -> Result<()> {
@@ -175,6 +444,10 @@ fn remove_value(db: &Database, table: TableDefinition<&str, &[u8]>, key: &str) -
     Ok(())
 }
 
+fn tag_index_key(tag: &str, key: &str) -> String {
+    format!("{tag}\u{1f}{key}")
+}
+
 fn storage_err(err: impl std::fmt::Display) -> CoreError {
     CoreError::Storage(err.to_string())
 }
@@ -185,8 +458,8 @@ mod tests {
 
     #[test]
     fn settings_round_trip() {
-        let storage = AppStorage::temporary().expect("temp db");
-        let settings = storage.settings().expect("settings tree");
+        let storage = AppStorage::temporary().expect("temp storage");
+        let settings = storage.settings();
         settings.set("player.volume", &0.8_f32).expect("set volume");
         let value: Option<f32> = settings.get("player.volume").expect("get volume");
         assert_eq!(value, Some(0.8));
@@ -194,8 +467,8 @@ mod tests {
 
     #[test]
     fn state_remove() {
-        let storage = AppStorage::temporary().expect("temp db");
-        let state = storage.state().expect("state tree");
+        let storage = AppStorage::temporary().expect("temp storage");
+        let state = storage.state();
         state.set("queue.current_index", &3_u32).expect("set index");
         state.remove("queue.current_index").expect("remove index");
         let value: Option<u32> = state.get("queue.current_index").expect("get index");
@@ -203,20 +476,37 @@ mod tests {
     }
 
     #[test]
-    fn cache_upsert_get() {
-        let storage = AppStorage::temporary().expect("temp db");
-        let cache = storage.cache().expect("cache table");
-        cache.upsert("cover.1", &"ok").expect("upsert cache");
-        let value: Option<String> = cache.get("cover.1").expect("get cache");
+    fn network_bucket_tags_round_trip() {
+        let storage = AppStorage::temporary().expect("temp storage");
+        let bucket = storage.weather();
+        bucket
+            .set_meta("entry.1", &"ok".to_string())
+            .expect("set meta");
+        bucket
+            .set_inline_body("entry.1", b"hello")
+            .expect("set inline");
+        bucket
+            .replace_tags(
+                "entry.1",
+                &[String::from("search"), String::from("query:yoasobi")],
+            )
+            .expect("replace tags");
+
+        let value: Option<String> = bucket.get_meta("entry.1").expect("get meta");
         assert_eq!(value.as_deref(), Some("ok"));
+        assert_eq!(
+            bucket.keys_for_tag("search").expect("keys for tag"),
+            vec![String::from("entry.1")]
+        );
+        assert_eq!(
+            bucket.get_inline_body("entry.1").expect("inline body"),
+            Some(b"hello".to_vec())
+        );
     }
 
     #[test]
-    fn temporary_storage_lifecycle() {
-        let storage = AppStorage::temporary().expect("temp db");
-        let settings = storage.settings().expect("settings table");
-        settings.set("boot.marker", &true).expect("write marker");
-        let value: Option<bool> = settings.get("boot.marker").expect("read marker");
-        assert_eq!(value, Some(true));
+    fn temporary_storage_has_cache_dirs() {
+        let storage = AppStorage::temporary().expect("temp storage");
+        assert!(storage.response_dir().exists());
     }
 }

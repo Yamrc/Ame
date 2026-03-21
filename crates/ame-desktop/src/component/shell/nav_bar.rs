@@ -6,6 +6,7 @@ use crate::component::{
     icon::{self, IconName},
     input, page_scaffold, theme,
 };
+use crate::util::url::image_resize_url;
 use nekowg::{
     AnyElement, App, Div, Entity, FontWeight, MouseButton, SharedString, div, img, prelude::*, px,
     relative, rgb, rgba,
@@ -16,7 +17,7 @@ use std::time::Duration;
 pub struct NavBarModel {
     pub pathname: SharedString,
     pub search_input: Entity<input::InputState>,
-    pub avatar_asset: SharedString,
+    pub avatar_url: Option<SharedString>,
 }
 
 #[derive(Clone)]
@@ -196,12 +197,18 @@ pub fn render(model: &NavBarModel, actions: &NavBarActions) -> AnyElement {
     let profile_action = actions.on_profile.clone();
     let avatar_button = button::icon_base(button::ButtonStyle::default())
         .size(px(30.))
-        .child(
-            img(model.avatar_asset.clone())
+        .child(match model.avatar_url.as_deref() {
+            Some(url) => img(image_resize_url(url, "96y96"))
                 .size(px(30.))
                 .rounded_full()
-                .object_fit(nekowg::ObjectFit::Cover),
-        )
+                .object_fit(nekowg::ObjectFit::Cover)
+                .into_any_element(),
+            None => img("image/akkarin.webp")
+                .size(px(30.))
+                .rounded_full()
+                .object_fit(nekowg::ObjectFit::Cover)
+                .into_any_element(),
+        })
         .on_mouse_down(MouseButton::Left, move |_, _, cx| profile_action(cx))
         .into_any_element();
 

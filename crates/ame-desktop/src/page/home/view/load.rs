@@ -1,10 +1,12 @@
 use nekowg::Context;
-use tracing::debug;
+use tracing::{debug, warn};
 
+use crate::domain::cache::CacheLookup;
 use crate::domain::settings::HomeArtistLanguage;
 use crate::page::home::models::{HomeLoadResult, HomeSessionKey};
 use crate::page::home::service::{
-    fetch_home_payload, session_key as service_session_key, session_key_from_session,
+    fetch_home_payload, read_home_payload_cache, session_key as service_session_key,
+    session_key_from_session, store_home_payload_cache,
 };
 use crate::page::state::DataSource;
 
@@ -19,11 +21,11 @@ pub(super) fn session_key(
 
 impl HomePageView {
     pub(super) fn ensure_loaded(&mut self, cx: &mut Context<Self>) {
-        self.load(false, cx);
+        self.load(cx);
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
-        self.load(true, cx);
+        self.load(cx);
     }
 
     pub(super) fn handle_session_change(&mut self, cx: &mut Context<Self>) {
@@ -31,7 +33,7 @@ impl HomePageView {
         let changed = self.observed_session_key != key;
         self.observed_session_key = key;
 
-        if changed {
+        if changed && !self.active {
             self.clear_state(cx);
         }
 
@@ -51,7 +53,7 @@ impl HomePageView {
         let changed = self.observed_artist_language != language;
         self.observed_artist_language = language;
 
-        if changed {
+        if changed && !self.active {
             self.clear_state(cx);
         }
 
@@ -66,51 +68,90 @@ impl HomePageView {
         }
     }
 
-    fn load(&mut self, force: bool, cx: &mut Context<Self>) {
+    fn load(&mut self, cx: &mut Context<Self>) {
         let session = self.runtime.session.read(cx).clone();
         let key = session_key_from_session(&session);
-        if !key.has_guest_token {
-            self.clear_state(cx);
-            return;
-        }
-
         let source = if key.has_user_token {
             DataSource::User
         } else {
             DataSource::Guest
         };
         let state = self.state.read(cx).clone();
-        if !force {
-            if state.recommend_playlists.loading {
+        if state.recommend_playlists.loading {
+            return;
+        }
+        let artist_language = self.runtime.app.read(cx).home_artist_language;
+
+        match read_home_payload_cache(&self.runtime, key, artist_language) {
+            Ok(CacheLookup::Fresh(cached)) => {
+                self.apply_home_load(
+                    key,
+                    artist_language,
+                    Ok(cached.value),
+                    Some(cached.fetched_at_ms),
+                    cx,
+                );
                 return;
             }
-            if state.recommend_playlists.source == source
-                && state.recommend_playlists.fetched_at_ms.is_some()
-            {
-                return;
+            Ok(CacheLookup::Stale(cached)) => {
+                self.apply_home_load(
+                    key,
+                    artist_language,
+                    Ok(cached.value),
+                    Some(cached.fetched_at_ms),
+                    cx,
+                );
+                self.state.update(cx, |state, cx| {
+                    state.recommend_playlists.revalidate();
+                    state.recommend_artists.revalidate();
+                    state.new_albums.revalidate();
+                    state.toplists.revalidate();
+                    if key.has_user_token {
+                        state.daily_tracks.revalidate();
+                        state.personal_fm.revalidate();
+                    }
+                    cx.notify();
+                });
+            }
+            Ok(CacheLookup::Miss) => {
+                self.state.update(cx, |state, cx| {
+                    state.recommend_playlists.begin(source);
+                    state.recommend_artists.begin(source);
+                    state.new_albums.begin(source);
+                    state.toplists.begin(source);
+                    if key.has_user_token {
+                        state.daily_tracks.begin(DataSource::User);
+                        state.personal_fm.begin(DataSource::User);
+                    } else {
+                        state.daily_tracks.clear();
+                        state.personal_fm.clear();
+                    }
+                    cx.notify();
+                });
+            }
+            Err(err) => {
+                warn!(error = %err, "home cache read failed");
+                self.state.update(cx, |state, cx| {
+                    state.recommend_playlists.begin(source);
+                    state.recommend_artists.begin(source);
+                    state.new_albums.begin(source);
+                    state.toplists.begin(source);
+                    if key.has_user_token {
+                        state.daily_tracks.begin(DataSource::User);
+                        state.personal_fm.begin(DataSource::User);
+                    } else {
+                        state.daily_tracks.clear();
+                        state.personal_fm.clear();
+                    }
+                    cx.notify();
+                });
             }
         }
 
         let Some(cookie) = crate::domain::session::build_cookie_header(&session.auth_bundle) else {
-            self.fail_state("缺少鉴权凭据", key.has_user_token, cx);
+            self.fail_state("Missing auth credentials", key.has_user_token, cx);
             return;
         };
-        let artist_language = self.runtime.app.read(cx).home_artist_language;
-
-        self.state.update(cx, |state, cx| {
-            state.recommend_playlists.begin(source);
-            state.recommend_artists.begin(source);
-            state.new_albums.begin(source);
-            state.toplists.begin(source);
-            if key.has_user_token {
-                state.daily_tracks.begin(DataSource::User);
-                state.personal_fm.begin(DataSource::User);
-            } else {
-                state.daily_tracks.clear();
-                state.personal_fm.clear();
-            }
-            cx.notify();
-        });
 
         let page = cx.entity().downgrade();
         cx.spawn(async move |_, cx| {
@@ -121,7 +162,7 @@ impl HomePageView {
                 )
                 .await;
             if let Err(err) = page.update(cx, |this, cx| {
-                this.apply_home_load(key, artist_language, result, cx)
+                this.apply_home_load(key, artist_language, result, None, cx)
             }) {
                 debug!("home page load dropped before apply: {err}");
             }
@@ -134,6 +175,7 @@ impl HomePageView {
         key: HomeSessionKey,
         artist_language: HomeArtistLanguage,
         result: Result<HomeLoadResult, String>,
+        cached_fetched_at_ms: Option<u64>,
         cx: &mut Context<Self>,
     ) {
         if service_session_key(&self.runtime, cx) != key
@@ -145,44 +187,42 @@ impl HomePageView {
         self.state.update(cx, |state, cx| {
             match result {
                 Ok(result) => {
+                    let fetched_at_ms = cached_fetched_at_ms.unwrap_or_else(|| {
+                        store_home_payload_cache(&self.runtime, key, artist_language, &result)
+                            .unwrap_or(result.fetched_at_ms)
+                    });
                     state
                         .recommend_playlists
-                        .succeed(result.recommend_playlists, Some(result.fetched_at_ms));
+                        .succeed(result.recommend_playlists, Some(fetched_at_ms));
                     state
                         .recommend_artists
-                        .succeed(result.recommend_artists, Some(result.fetched_at_ms));
+                        .succeed(result.recommend_artists, Some(fetched_at_ms));
                     state
                         .new_albums
-                        .succeed(result.new_albums, Some(result.fetched_at_ms));
-                    state
-                        .toplists
-                        .succeed(result.toplists, Some(result.fetched_at_ms));
+                        .succeed(result.new_albums, Some(fetched_at_ms));
+                    state.toplists.succeed(result.toplists, Some(fetched_at_ms));
                     if key.has_user_token {
                         state
                             .daily_tracks
-                            .succeed(result.daily_tracks, Some(result.fetched_at_ms));
+                            .succeed(result.daily_tracks, Some(fetched_at_ms));
                         state
                             .personal_fm
-                            .succeed(result.personal_fm, Some(result.fetched_at_ms));
+                            .succeed(result.personal_fm, Some(fetched_at_ms));
                     } else {
                         state.daily_tracks.clear();
                         state.personal_fm.clear();
                     }
                 }
                 Err(err) => {
-                    state.recommend_playlists.clear();
-                    state.recommend_playlists.fail(err.clone());
-                    state.recommend_artists.clear();
-                    state.recommend_artists.fail(err.clone());
-                    state.new_albums.clear();
-                    state.new_albums.fail(err.clone());
-                    state.toplists.clear();
-                    state.toplists.fail(err.clone());
+                    state
+                        .recommend_playlists
+                        .fail_preserving_cached(err.clone());
+                    state.recommend_artists.fail_preserving_cached(err.clone());
+                    state.new_albums.fail_preserving_cached(err.clone());
+                    state.toplists.fail_preserving_cached(err.clone());
                     if key.has_user_token {
-                        state.daily_tracks.clear();
-                        state.daily_tracks.fail(err.clone());
-                        state.personal_fm.clear();
-                        state.personal_fm.fail(err);
+                        state.daily_tracks.fail_preserving_cached(err.clone());
+                        state.personal_fm.fail_preserving_cached(err);
                     } else {
                         state.daily_tracks.clear();
                         state.personal_fm.clear();

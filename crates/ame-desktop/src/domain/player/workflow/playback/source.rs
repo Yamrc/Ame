@@ -19,7 +19,11 @@ fn prepare_track_source<T>(
     let source_url = match player::fetch_track_url_blocking(track_id, Some(cookie.as_str())) {
         Ok(url) => url,
         Err(err) => {
-            auth::set_shell_error(runtime, Some(format!("获取播放地址失败: {err}")), cx);
+            auth::set_shell_error(
+                runtime,
+                Some(format!("Failed to fetch playback URL: {err}")),
+                cx,
+            );
             return None;
         }
     };
@@ -49,7 +53,7 @@ pub(in crate::domain::player::workflow) fn start_playback_at<T>(
         return false;
     };
 
-    let opened = with_audio_bridge_or_error(runtime, cx, "播放失败", |audio| {
+    let opened = with_audio_bridge_or_error(runtime, cx, "Playback failed", |audio| {
         audio.send(AudioCommand::Open {
             source: SourceSpec::network(source_url),
             start_ms,
@@ -59,7 +63,7 @@ pub(in crate::domain::player::workflow) fn start_playback_at<T>(
     match opened {
         Some(Ok(_)) => {}
         Some(Err(err)) => {
-            auth::set_shell_error(runtime, Some(format!("播放失败: {err}")), cx);
+            auth::set_shell_error(runtime, Some(format!("Playback failed: {err}")), cx);
             return false;
         }
         None => {
@@ -89,11 +93,15 @@ pub(in crate::domain::player::workflow) fn refresh_current_track_url_and_resume<
     };
 
     let Some(url) = prepare_track_source(runtime, current_item.id, current_index, cx) else {
-        auth::set_shell_error(runtime, Some("刷新播放地址失败".to_string()), cx);
+        auth::set_shell_error(
+            runtime,
+            Some("Failed to refresh playback URL".to_string()),
+            cx,
+        );
         return false;
     };
 
-    let reopened = with_audio_bridge_or_error(runtime, cx, "刷新播放失败", |audio| {
+    let reopened = with_audio_bridge_or_error(runtime, cx, "Failed to refresh playback", |audio| {
         let position = audio.service().snapshot().position_ms;
         audio.send(AudioCommand::Open {
             source: SourceSpec::network(url),
@@ -104,7 +112,11 @@ pub(in crate::domain::player::workflow) fn refresh_current_track_url_and_resume<
     match reopened {
         Some(Ok(_)) => {}
         Some(Err(err)) => {
-            auth::set_shell_error(runtime, Some(format!("刷新播放失败: {err}")), cx);
+            auth::set_shell_error(
+                runtime,
+                Some(format!("Failed to refresh playback: {err}")),
+                cx,
+            );
             return false;
         }
         None => {

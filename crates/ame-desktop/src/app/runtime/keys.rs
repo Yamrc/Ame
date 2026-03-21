@@ -7,3 +7,4 @@ pub const KEY_PLAYER_DURATION_MS: &str = "player.duration_ms";
 pub const KEY_PLAYER_WAS_PLAYING: &str = "player.was_playing";
 pub const KEY_WINDOW_CLOSE_BEHAVIOR: &str = "window.close_behavior";
 pub const KEY_HOME_ARTIST_LANGUAGE: &str = "home.artist_language";
+pub const KEY_SESSION_IDENTITY: &str = "session.identity";

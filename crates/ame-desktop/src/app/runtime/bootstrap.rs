@@ -7,15 +7,16 @@ use nekowg::{AppContext, Context};
 use crate::app::audio_bridge::AudioBridgeEntity;
 use crate::app::env::AppEnv;
 use crate::app::state::AppEntity;
+use crate::domain::cache::CacheService;
 use crate::domain::player::{PlaybackMode, PlayerEntity, QueueItem};
-use crate::domain::session::SessionState;
+use crate::domain::session::{PersistedSessionIdentity, SessionState};
 use crate::domain::settings::{CloseBehavior, HomeArtistLanguage};
 use crate::domain::shell::ShellState;
 
 use super::keys::{
     KEY_HOME_ARTIST_LANGUAGE, KEY_PLAYER_CURRENT_INDEX, KEY_PLAYER_DURATION_MS, KEY_PLAYER_MODE,
     KEY_PLAYER_POSITION_MS, KEY_PLAYER_QUEUE, KEY_PLAYER_VOLUME, KEY_PLAYER_WAS_PLAYING,
-    KEY_WINDOW_CLOSE_BEHAVIOR,
+    KEY_SESSION_IDENTITY, KEY_WINDOW_CLOSE_BEHAVIOR,
 };
 use super::{AppRuntime, AppServices, PersistedQueueItem, RuntimeBootstrap};
 
@@ -30,7 +31,11 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
     let (audio_bridge, audio_runtime, audio_error) =
         match AudioService::spawn(AudioConfig::default()) {
             Ok((service, runtime)) => (Some(AudioBridgeEntity::new(service)), Some(runtime), None),
-            Err(err) => (None, None, Some(format!("音频初始化失败: {err}"))),
+            Err(err) => (
+                None,
+                None,
+                Some(format!("Failed to initialize audio: {err}")),
+            ),
         };
     if let Some(bridge) = audio_bridge {
         services.audio_bridge = Some(Arc::new(Mutex::new(bridge)));
@@ -41,54 +46,69 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
         match std::fs::create_dir_all(&db_path) {
             Ok(_) => match AppStorage::open(&db_path) {
                 Ok(storage) => {
-                    match storage.settings() {
-                        Ok(settings) => services.settings_store = Some(settings),
-                        Err(err) => push_message(
+                    services.settings_store = Some(storage.settings());
+                    services.state_store = Some(storage.state());
+                    services.network_cache = Some(Arc::new(CacheService::new(
+                        storage.firework(),
+                        storage.weather(),
+                        storage.geological(),
+                        storage.response_dir().to_path_buf(),
+                    )));
+
+                    if let Some(network_cache) = services.network_cache.as_ref()
+                        && let Err(err) = network_cache.run_maintenance()
+                    {
+                        push_message(
                             &mut startup_error,
-                            format!("打开 settings 存储失败: {err}"),
-                        ),
-                    }
-                    match storage.state() {
-                        Ok(state) => services.state_store = Some(state),
-                        Err(err) => {
-                            push_message(&mut startup_error, format!("打开 state 存储失败: {err}"))
-                        }
-                    }
-                    match storage.cache() {
-                        Ok(cache) => services.cache_store = Some(cache),
-                        Err(err) => {
-                            push_message(&mut startup_error, format!("打开 cache 存储失败: {err}"))
-                        }
+                            format!("Failed to run network cache maintenance: {err}"),
+                        );
                     }
                 }
-                Err(err) => push_message(&mut startup_error, format!("打开存储失败: {err}")),
+                Err(err) => {
+                    push_message(&mut startup_error, format!("Failed to open storage: {err}"))
+                }
             },
-            Err(err) => push_message(&mut startup_error, format!("创建数据目录失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to create data directory: {err}"),
+            ),
         }
     } else {
-        push_message(&mut startup_error, "无法定位系统数据目录".to_string());
+        push_message(
+            &mut startup_error,
+            "Failed to locate the system data directory".to_string(),
+        );
     }
 
     if let Some(settings) = services.settings_store.as_ref() {
         match settings.get::<f32>(KEY_PLAYER_VOLUME) {
             Ok(Some(volume)) => player_state.set_volume(volume),
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取音量失败: {err}")),
+            Err(err) => push_message(&mut startup_error, format!("Failed to read volume: {err}")),
         }
         match settings.get::<PlaybackMode>(KEY_PLAYER_MODE) {
             Ok(Some(mode)) => player_state.mode = mode,
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取播放模式失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read playback mode: {err}"),
+            ),
         }
         match settings.get::<CloseBehavior>(KEY_WINDOW_CLOSE_BEHAVIOR) {
             Ok(Some(value)) => close_behavior = value,
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取关闭行为失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read close behavior: {err}"),
+            ),
         }
         match settings.get::<HomeArtistLanguage>(KEY_HOME_ARTIST_LANGUAGE) {
             Ok(Some(value)) => home_artist_language = value,
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取首页艺人语种失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read home artist language: {err}"),
+            ),
         }
     }
 
@@ -96,11 +116,14 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
         match audio_bridge.lock() {
             Ok(bridge) => {
                 if let Err(err) = bridge.send(AudioCommand::SetVolume(player_state.volume)) {
-                    push_message(&mut startup_error, format!("设置音量失败: {err}"));
+                    push_message(&mut startup_error, format!("Failed to set volume: {err}"));
                 }
             }
             Err(err) => {
-                push_message(&mut startup_error, format!("锁定音频桥失败: {err}"));
+                push_message(
+                    &mut startup_error,
+                    format!("Failed to lock audio bridge: {err}"),
+                );
             }
         }
     }
@@ -125,27 +148,39 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
                 );
             }
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取队列失败: {err}")),
+            Err(err) => push_message(&mut startup_error, format!("Failed to read queue: {err}")),
         }
         match state.get::<Option<usize>>(KEY_PLAYER_CURRENT_INDEX) {
             Ok(Some(index)) => {
                 player_state.current_index = index.filter(|i| *i < player_state.queue.len());
             }
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取当前索引失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read current index: {err}"),
+            ),
         }
         match state.get::<u64>(KEY_PLAYER_POSITION_MS) {
             Ok(Some(position)) => player_state.position_ms = position,
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取播放进度失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read playback position: {err}"),
+            ),
         }
         match state.get::<u64>(KEY_PLAYER_DURATION_MS) {
             Ok(Some(duration)) => player_state.duration_ms = duration,
             Ok(None) => {}
-            Err(err) => push_message(&mut startup_error, format!("读取时长失败: {err}")),
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read duration: {err}"),
+            ),
         }
         if let Err(err) = state.get::<bool>(KEY_PLAYER_WAS_PLAYING) {
-            push_message(&mut startup_error, format!("读取播放状态失败: {err}"));
+            push_message(
+                &mut startup_error,
+                format!("Failed to read playback state: {err}"),
+            );
         }
     }
 
@@ -155,7 +190,22 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
     match services.credential_store.load_auth_bundle() {
         Ok(Some(bundle)) => session_state.auth_bundle = bundle,
         Ok(None) => {}
-        Err(err) => push_message(&mut startup_error, format!("读取 keyring 凭据失败: {err}")),
+        Err(err) => push_message(
+            &mut startup_error,
+            format!("Failed to read keyring credentials: {err}"),
+        ),
+    }
+    if let Some(state_store) = services.state_store.as_ref() {
+        match state_store.get::<PersistedSessionIdentity>(KEY_SESSION_IDENTITY) {
+            Ok(Some(identity)) if identity.matches_bundle(&session_state.auth_bundle) => {
+                identity.apply_to_session(&mut session_state);
+            }
+            Ok(Some(_)) | Ok(None) => {}
+            Err(err) => push_message(
+                &mut startup_error,
+                format!("Failed to read session identity snapshot: {err}"),
+            ),
+        }
     }
 
     let mut shell_state = ShellState {

@@ -41,9 +41,26 @@ impl<T: Default> DataState<T> {
         self.fetched_at_ms = fetched_at_ms;
     }
 
+    pub fn revalidate(&mut self) {
+        self.loading = true;
+        self.error = None;
+    }
+
     pub fn fail(&mut self, error: impl Into<String>) {
         self.loading = false;
         self.error = Some(error.into());
+    }
+
+    pub fn fail_preserving_cached(&mut self, error: impl Into<String>) {
+        let error = error.into();
+        if !self.has_cached_value() {
+            self.clear();
+        }
+        self.fail(error);
+    }
+
+    pub fn has_cached_value(&self) -> bool {
+        self.fetched_at_ms.is_some()
     }
 
     pub fn clear(&mut self) {

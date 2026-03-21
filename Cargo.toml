@@ -27,6 +27,7 @@ strip = true
 anyhow = "1.0.101"
 aes = "0.8.4"
 audioadapter-buffers = "2.0.0"
+blake3 = "1.8.2"
 base64 = "0.22.1"
 cbc = "0.1.2"
 cpal = "0.17.1"

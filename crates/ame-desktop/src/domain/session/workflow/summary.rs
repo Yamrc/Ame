@@ -3,6 +3,7 @@ use nekowg::Context;
 
 use crate::app::runtime::AppRuntime;
 use crate::domain::session as auth;
+use crate::domain::session::SessionState;
 
 #[derive(Debug)]
 struct LoginSummaryPayload {
@@ -21,7 +22,7 @@ fn bundle_has_user_token(bundle: &AuthBundle) -> bool {
 
 fn fetch_login_summary(bundle: AuthBundle) -> Result<LoginSummaryPayload, String> {
     let Some(cookie) = auth::build_cookie_header(&bundle) else {
-        return Err("鉴权凭据异常，已阻止请求".to_string());
+        return Err("Invalid auth credentials blocked the request".to_string());
     };
     let body =
         auth::fetch_login_status_blocking(Some(cookie.as_str())).map_err(|err| err.to_string())?;
@@ -32,6 +33,13 @@ fn fetch_login_summary(bundle: AuthBundle) -> Result<LoginSummaryPayload, String
         auth_user_avatar: profile.and_then(|value| value.avatar_url.clone()),
         auth_user_id: body.user_id(),
     })
+}
+
+fn apply_login_summary_payload(session: &mut SessionState, payload: LoginSummaryPayload) {
+    session.auth_account_summary = payload.auth_account_summary;
+    session.auth_user_name = payload.auth_user_name;
+    session.auth_user_avatar = payload.auth_user_avatar;
+    session.auth_user_id = payload.auth_user_id;
 }
 
 pub fn refresh_login_summary<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
@@ -55,30 +63,44 @@ pub fn refresh_login_summary<T: 'static>(runtime: &AppRuntime, cx: &mut Context<
             .background_executor()
             .spawn(async move { fetch_login_summary(bundle) })
             .await;
+        let persist_identity = result.is_ok();
+        let mut old_user_id = None;
+        let mut new_user_id = None;
 
         let still_current = runtime.session.update(cx, |session, cx| {
             session.summary_loading = false;
             if session.auth_bundle.music_u != expected_music_u {
                 return false;
             }
+            old_user_id = session.auth_user_id;
             match result {
                 Ok(payload) => {
-                    session.auth_account_summary = payload.auth_account_summary;
-                    session.auth_user_name = payload.auth_user_name;
-                    session.auth_user_avatar = payload.auth_user_avatar;
-                    session.auth_user_id = payload.auth_user_id;
+                    apply_login_summary_payload(session, payload);
+                    new_user_id = session.auth_user_id;
                 }
                 Err(err) => {
-                    session.auth_account_summary = None;
-                    session.auth_user_name = None;
-                    session.auth_user_avatar = None;
-                    session.auth_user_id = None;
-                    auth::push_shell_error(&runtime, format!("读取登录状态失败: {err}"), cx);
+                    new_user_id = session.auth_user_id;
+                    auth::push_shell_error(
+                        &runtime,
+                        format!("Failed to read login status: {err}"),
+                        cx,
+                    );
                 }
             }
             cx.notify();
             true
         });
+        if persist_identity && still_current {
+            auth::persist_session_identity(&runtime, cx);
+            if old_user_id != new_user_id {
+                auth::invalidate_firework_for_identity_transition(
+                    &runtime,
+                    old_user_id,
+                    new_user_id,
+                    cx,
+                );
+            }
+        }
 
         if !still_current {
             runtime.session.update(cx, |session, _| {
@@ -90,6 +112,7 @@ pub fn refresh_login_summary<T: 'static>(runtime: &AppRuntime, cx: &mut Context<
 }
 
 fn clear_login_summary<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+    let old_user_id = runtime.session.read(cx).auth_user_id;
     runtime.session.update(cx, |session, cx| {
         session.auth_account_summary = None;
         session.auth_user_name = None;
@@ -97,4 +120,44 @@ fn clear_login_summary<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
         session.auth_user_id = None;
         cx.notify();
     });
+    auth::invalidate_firework_for_identity_transition(runtime, old_user_id, None, cx);
+    auth::clear_persisted_session_identity(runtime, cx);
+}
+
+#[cfg(test)]
+mod tests {
+    use ame_core::credential::AuthBundle;
+
+    use super::{LoginSummaryPayload, apply_login_summary_payload};
+    use crate::domain::session::SessionState;
+
+    #[test]
+    fn applying_summary_payload_updates_identity_fields() {
+        let mut session = SessionState {
+            auth_bundle: AuthBundle {
+                music_u: Some("token".to_string()),
+                ..Default::default()
+            },
+            auth_account_summary: Some("old summary".to_string()),
+            auth_user_name: Some("old name".to_string()),
+            auth_user_avatar: Some("old avatar".to_string()),
+            auth_user_id: Some(1),
+            ..Default::default()
+        };
+
+        apply_login_summary_payload(
+            &mut session,
+            LoginSummaryPayload {
+                auth_account_summary: Some("new summary".to_string()),
+                auth_user_name: Some("new name".to_string()),
+                auth_user_avatar: Some("new avatar".to_string()),
+                auth_user_id: Some(2),
+            },
+        );
+
+        assert_eq!(session.auth_account_summary.as_deref(), Some("new summary"));
+        assert_eq!(session.auth_user_name.as_deref(), Some("new name"));
+        assert_eq!(session.auth_user_avatar.as_deref(), Some("new avatar"));
+        assert_eq!(session.auth_user_id, Some(2));
+    }
 }

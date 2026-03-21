@@ -78,7 +78,7 @@ impl LibraryPageView {
             Err(err) => {
                 crate::domain::session::push_shell_error(
                     &self.runtime,
-                    format!("替换队列失败: {err}"),
+                    format!("Failed to replace queue: {err}"),
                     cx,
                 );
                 return;
@@ -256,7 +256,7 @@ impl PageLifecycle for LibraryPageView {
         let snapshot = match snapshot {
             PageSnapshot::Library(snapshot) => snapshot,
             PageSnapshot::__Reserved => {
-                return Err("收到保留的音乐库页面快照类型".to_string());
+                return Err("Received an incompatible preserved library snapshot".to_string());
             }
         };
         self.state.update(cx, |state, cx| {

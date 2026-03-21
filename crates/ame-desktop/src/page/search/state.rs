@@ -62,7 +62,7 @@ pub fn should_skip_collection_load<T>(
     if append {
         state.items.loading || !state.has_more || state.keyword != keyword
     } else {
-        state.items.loading || (state.keyword == keyword && state.items.fetched_at_ms.is_some())
+        state.items.loading
     }
 }
 
@@ -86,6 +86,7 @@ pub fn apply_collection_result<T>(
     keyword: String,
     page: super::types::SearchPageSlice<T>,
     append: bool,
+    fetched_at_ms: u64,
 ) {
     state.keyword = keyword;
     state.has_more = page.has_more;
@@ -93,9 +94,9 @@ pub fn apply_collection_result<T>(
         state.items.data.extend(page.items);
         state.items.loading = false;
         state.items.error = None;
-        state.items.fetched_at_ms = Some(now_millis());
+        state.items.fetched_at_ms = Some(fetched_at_ms);
     } else {
-        state.items.succeed(page.items, Some(now_millis()));
+        state.items.succeed(page.items, Some(fetched_at_ms));
     }
 }
 
@@ -106,7 +107,7 @@ pub fn apply_collection_error<T>(
     append: bool,
 ) {
     state.keyword = keyword;
-    if !append {
+    if !append && !state.items.has_cached_value() {
         state.items.clear();
     }
     state.items.fail(error);
