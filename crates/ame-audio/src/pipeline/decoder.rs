@@ -18,7 +18,7 @@ use symphonia::default::{get_codecs, get_probe};
 use tracing::debug;
 
 use crate::Sample;
-use crate::backend::SampleRing;
+use crate::backend::{PlaybackDrainState, SampleRing};
 use crate::config::ResampleQualityPreset;
 use crate::error::{AudioError, Result};
 use crate::source::{SourceFactory, SourceSpec};
@@ -28,7 +28,6 @@ pub(crate) type RingProducer = <SampleRing as ringbuf::traits::Split>::Prod;
 #[derive(Debug, Clone)]
 pub(crate) enum DecoderNotification {
     Duration(u64),
-    Ended,
     Error(AudioError),
 }
 
@@ -42,6 +41,7 @@ pub(crate) struct DecoderSpawnRequest {
     pub cancel: Arc<AtomicBool>,
     pub notification_tx: Sender<DecoderNotification>,
     pub producer: RingProducer,
+    pub drain_state: Arc<PlaybackDrainState>,
 }
 
 pub(crate) fn spawn_decoder(request: DecoderSpawnRequest) -> thread::JoinHandle<()> {
@@ -56,6 +56,7 @@ pub(crate) fn spawn_decoder(request: DecoderSpawnRequest) -> thread::JoinHandle<
             cancel,
             notification_tx,
             producer,
+            drain_state,
         } = request;
         let result = decode_loop(
             source_factory,
@@ -67,6 +68,7 @@ pub(crate) fn spawn_decoder(request: DecoderSpawnRequest) -> thread::JoinHandle<
             cancel,
             notification_tx.clone(),
             producer,
+            drain_state,
         );
 
         if let Err(err) = result {
@@ -86,6 +88,7 @@ fn decode_loop(
     cancel: Arc<AtomicBool>,
     notification_tx: Sender<DecoderNotification>,
     mut producer: RingProducer,
+    drain_state: Arc<PlaybackDrainState>,
 ) -> Result<()> {
     let opened = source_factory.open(&source_spec)?;
     if start_ms > 0 && !opened.seekable {
@@ -207,7 +210,7 @@ fn decode_loop(
 
         let interleaved = sample_buf.samples();
         let output_samples = if let Some(resampler) = &mut resampler {
-            resampler.process(interleaved, &mut producer, &cancel)?;
+            resampler.process(interleaved, &mut producer, &cancel, &drain_state)?;
             None
         } else {
             Some(interleaved)
@@ -216,13 +219,13 @@ fn decode_loop(
         if let Some(samples) = output_samples {
             let channels_adjusted =
                 convert_channels(samples, src_channels, target_channels, &mut channel_scratch);
-            push_samples(&mut producer, channels_adjusted, &cancel)?;
+            push_samples(&mut producer, channels_adjusted, &cancel, &drain_state)?;
         }
     }
 
     debug!("decoder finished for {}", source_spec.describe());
     if !cancel.load(Ordering::Relaxed) {
-        let _ = notification_tx.send(DecoderNotification::Ended);
+        drain_state.mark_decoder_finished();
     }
 
     Ok(())
@@ -270,6 +273,7 @@ fn push_samples(
     producer: &mut RingProducer,
     samples: &[Sample],
     cancel: &Arc<AtomicBool>,
+    drain_state: &Arc<PlaybackDrainState>,
 ) -> Result<()> {
     let mut offset = 0;
     while offset < samples.len() {
@@ -281,6 +285,7 @@ fn push_samples(
             thread::sleep(std::time::Duration::from_micros(250));
             continue;
         }
+        drain_state.on_samples_queued(pushed);
         offset += pushed;
     }
     Ok(())
@@ -336,6 +341,7 @@ impl ResamplerPipeline {
         samples: &[Sample],
         producer: &mut RingProducer,
         cancel: &Arc<AtomicBool>,
+        drain_state: &Arc<PlaybackDrainState>,
     ) -> Result<()> {
         self.input.extend_from_slice(samples);
 
@@ -372,7 +378,12 @@ impl ResamplerPipeline {
                 })?;
 
             let produced_samples = produced_frames * self.channels;
-            push_samples(producer, &self.output[..produced_samples], cancel)?;
+            push_samples(
+                producer,
+                &self.output[..produced_samples],
+                cancel,
+                drain_state,
+            )?;
 
             self.input_start += consumed_frames * self.channels;
             if self.input_start > self.input.len() / 2 {

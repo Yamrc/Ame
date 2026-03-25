@@ -6,7 +6,8 @@ use ringbuf::traits::Split;
 use tracing::warn;
 
 use crate::backend::{
-    BackendNotification, OpenStreamRequest, OutputSession, SampleRing, backend_for_kind,
+    BackendNotification, OpenStreamRequest, OutputSession, PlaybackDrainState, SampleRing,
+    backend_for_kind,
 };
 use crate::command::AudioCommand;
 use crate::config::{AudioConfig, RuntimeConfigPatch};
@@ -174,6 +175,7 @@ impl AudioRuntime {
         let ring_capacity = 48_000 * 2 * 2;
         let ring = SampleRing::new(ring_capacity);
         let (producer, consumer) = ring.split();
+        let drain_state = Arc::new(PlaybackDrainState::default());
 
         let output = backend.open_stream(OpenStreamRequest {
             stream_id,
@@ -181,6 +183,7 @@ impl AudioRuntime {
             volume: self.config.volume,
             consumer,
             event_tx: self.backend_notify_tx.clone(),
+            drain_state: Arc::clone(&drain_state),
         })?;
 
         if autoplay {
@@ -203,6 +206,7 @@ impl AudioRuntime {
             cancel: Arc::clone(&cancel),
             notification_tx: self.decoder_notify_tx.clone(),
             producer,
+            drain_state,
         });
 
         let device_name = output.device_name();
@@ -354,14 +358,6 @@ impl AudioRuntime {
                 Ok(DecoderNotification::Duration(duration_ms)) => {
                     self.duration_ms = duration_ms;
                 }
-                Ok(DecoderNotification::Ended) => {
-                    self.position_base_ms = self.duration_ms;
-                    self.playing_anchor = None;
-                    self.event_hub.publish(AudioEvent::TrackEnded);
-                    if let Err(err) = self.transition_to(EngineState::Ready) {
-                        self.publish_error(err);
-                    }
-                }
                 Ok(DecoderNotification::Error(err)) => self.publish_error(err),
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => break,
@@ -393,6 +389,24 @@ impl AudioRuntime {
                     self.event_hub
                         .publish(AudioEvent::DeviceLost { backend, device });
                     if let Err(err) = self.recover_from_device_loss(reason) {
+                        self.publish_error(err);
+                    }
+                }
+                Ok(BackendNotification::PlaybackDrained { stream_id }) => {
+                    let Some(playback) = self.playback.as_ref() else {
+                        continue;
+                    };
+                    if playback.stream_id != stream_id {
+                        continue;
+                    }
+                    if self.state != EngineState::Playing {
+                        continue;
+                    }
+
+                    self.position_base_ms = self.duration_ms;
+                    self.playing_anchor = None;
+                    self.event_hub.publish(AudioEvent::TrackEnded);
+                    if let Err(err) = self.transition_to(EngineState::Ready) {
                         self.publish_error(err);
                     }
                 }

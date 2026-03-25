@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 
 #[cfg(target_os = "windows")]
@@ -26,11 +26,68 @@ pub struct OpenStreamRequest {
     pub volume: f32,
     pub consumer: RingConsumer,
     pub event_tx: Sender<BackendNotification>,
+    pub drain_state: Arc<PlaybackDrainState>,
 }
 
 #[derive(Debug, Clone)]
 pub enum BackendNotification {
     StreamError { stream_id: u64, reason: String },
+    PlaybackDrained { stream_id: u64 },
+}
+
+#[derive(Debug, Default)]
+pub struct PlaybackDrainState {
+    pending_samples: AtomicUsize,
+    decoder_finished: AtomicBool,
+    drained_notified: AtomicBool,
+}
+
+impl PlaybackDrainState {
+    pub fn on_samples_queued(&self, count: usize) {
+        if count == 0 {
+            return;
+        }
+
+        self.pending_samples.fetch_add(count, Ordering::AcqRel);
+        self.drained_notified.store(false, Ordering::Release);
+    }
+
+    pub fn mark_decoder_finished(&self) {
+        self.decoder_finished.store(true, Ordering::Release);
+    }
+
+    pub fn on_output_callback(&self, played_samples: usize) -> bool {
+        if played_samples > 0 {
+            self.consume_samples(played_samples);
+            return false;
+        }
+
+        if !self.decoder_finished.load(Ordering::Acquire) {
+            return false;
+        }
+
+        if self.pending_samples.load(Ordering::Acquire) > 0 {
+            return false;
+        }
+
+        !self.drained_notified.swap(true, Ordering::AcqRel)
+    }
+
+    fn consume_samples(&self, count: usize) {
+        let mut current = self.pending_samples.load(Ordering::Acquire);
+        loop {
+            let next = current.saturating_sub(count);
+            match self.pending_samples.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
+    }
 }
 
 pub trait OutputSession: Send {
@@ -146,6 +203,7 @@ impl OutputBackend for CpalBackend {
         let volume_clone = Arc::clone(&volume);
         let tx = request.event_tx;
         let stream_id = request.stream_id;
+        let drain_state = request.drain_state;
 
         let stream = match sample_format {
             SampleFormat::F32 => build_output_stream::<f32>(
@@ -155,6 +213,7 @@ impl OutputBackend for CpalBackend {
                 volume_clone,
                 tx,
                 stream_id,
+                Arc::clone(&drain_state),
             )?,
             SampleFormat::I16 => build_output_stream::<i16>(
                 &device,
@@ -163,6 +222,7 @@ impl OutputBackend for CpalBackend {
                 volume_clone,
                 tx,
                 stream_id,
+                Arc::clone(&drain_state),
             )?,
             SampleFormat::U16 => build_output_stream::<u16>(
                 &device,
@@ -171,6 +231,7 @@ impl OutputBackend for CpalBackend {
                 volume_clone,
                 tx,
                 stream_id,
+                drain_state,
             )?,
             _ => {
                 return Err(AudioError::OutputInitFailed {
@@ -196,17 +257,28 @@ fn build_output_stream<T>(
     volume: Arc<AtomicU32>,
     event_tx: Sender<BackendNotification>,
     stream_id: u64,
+    drain_state: Arc<PlaybackDrainState>,
 ) -> Result<Stream>
 where
     T: cpal::SizedSample + cpal::FromSample<Sample>,
 {
+    let drain_event_tx = event_tx.clone();
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _| {
             let volume = f32::from_bits(volume.load(Ordering::Relaxed));
+            let mut played_samples = 0;
             for output in data.iter_mut() {
-                let sample = consumer.try_pop().unwrap_or_default();
-                *output = T::from_sample(sample * volume);
+                if let Some(sample) = consumer.try_pop() {
+                    played_samples += 1;
+                    *output = T::from_sample(sample * volume);
+                } else {
+                    *output = T::from_sample(0.0);
+                }
+            }
+
+            if drain_state.on_output_callback(played_samples) {
+                let _ = drain_event_tx.send(BackendNotification::PlaybackDrained { stream_id });
             }
         },
         move |err| {
@@ -317,4 +389,32 @@ fn host_for_backend(kind: OutputBackendKind) -> Result<cpal::Host> {
 #[allow(deprecated)]
 fn device_name(device: &Device) -> std::result::Result<String, cpal::DeviceNameError> {
     device.name()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PlaybackDrainState;
+
+    #[test]
+    fn drain_notification_waits_for_empty_callback_after_last_samples() {
+        let state = PlaybackDrainState::default();
+        state.on_samples_queued(8);
+
+        assert!(!state.on_output_callback(0));
+
+        state.mark_decoder_finished();
+
+        assert!(!state.on_output_callback(4));
+        assert!(!state.on_output_callback(4));
+        assert!(state.on_output_callback(0));
+    }
+
+    #[test]
+    fn drain_notification_is_emitted_only_once() {
+        let state = PlaybackDrainState::default();
+        state.mark_decoder_finished();
+
+        assert!(state.on_output_callback(0));
+        assert!(!state.on_output_callback(0));
+    }
 }
