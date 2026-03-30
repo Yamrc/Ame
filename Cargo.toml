@@ -44,7 +44,7 @@ keyring = { version = "3.6.3", features = [
 symphonia = { version = "0.5.5", default-features = false }
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"]}
 redb = "3.1.1"
-md-5 = "0.10.6"
+md-5 = "0.11.0"
 nekowg = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2"}
 nekowg_platform = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2" }
 dashmap = "6.1.0"
