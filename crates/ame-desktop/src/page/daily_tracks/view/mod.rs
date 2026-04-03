@@ -6,9 +6,10 @@ use nekowg::{Context, Entity, Render, Subscription, Window, prelude::*};
 
 use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
-use crate::domain::player;
+use crate::domain::{favorites, player};
 use crate::page::daily_tracks::sections::{
-    DailyTracksRenderCache, ReplaceDailyQueueHandler, TrackActionHandler, render_daily_tracks_page,
+    DailyTracksFavoriteState, DailyTracksRenderActions, DailyTracksRenderCache,
+    FavoriteTrackHandler, ReplaceDailyQueueHandler, TrackActionHandler, render_daily_tracks_page,
 };
 use crate::page::daily_tracks::state::DailyTracksPageState;
 use crate::page::playlist::PlaylistTrackRow;
@@ -45,6 +46,9 @@ impl DailyTracksPageView {
         }));
         subscriptions.push(cx.observe(&view.runtime.player, |this, _, cx| {
             this.refresh_heavy_resources(cx);
+            cx.notify();
+        }));
+        subscriptions.push(cx.observe(&view.runtime.favorites, |_, _, cx| {
             cx.notify();
         }));
         view._subscriptions = subscriptions;
@@ -103,6 +107,9 @@ impl Render for DailyTracksPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let tracks = self.state.read(cx);
         let page = cx.entity();
+        let session_user_id = self.runtime.session.read(cx).auth_user_id;
+        let favorites_state = self.runtime.favorites.read(cx).clone();
+        let favorite_ready = favorites_state.is_ready_for(session_user_id);
         let on_play_track: TrackActionHandler = {
             let page = page.clone();
             Arc::new(move |track, cx| {
@@ -121,6 +128,14 @@ impl Render for DailyTracksPageView {
                 });
             })
         };
+        let on_toggle_favorite: FavoriteTrackHandler = {
+            let page = page.clone();
+            Arc::new(move |track_id, cx| {
+                page.update(cx, |this, cx| {
+                    favorites::toggle_track_like(&this.runtime, track_id, cx);
+                });
+            })
+        };
         let on_replace_queue: ReplaceDailyQueueHandler = {
             let page = cx.entity();
             Arc::new(move |track_id, cx| {
@@ -131,9 +146,16 @@ impl Render for DailyTracksPageView {
         render_daily_tracks_page(
             &tracks.tracks,
             self.heavy_resources.as_ref(),
-            on_play_track,
-            on_enqueue_track,
-            on_replace_queue,
+            DailyTracksFavoriteState {
+                favorites: favorites_state,
+                ready: favorite_ready,
+            },
+            DailyTracksRenderActions {
+                on_play_track,
+                on_enqueue_track,
+                on_toggle_favorite,
+                on_replace_queue,
+            },
         )
     }
 }

@@ -8,8 +8,8 @@ use crate::component::{
     input,
     slider::{SliderEvent, SliderState},
 };
-use crate::domain::player;
 use crate::domain::session as auth;
+use crate::domain::{favorites, player};
 
 use super::RootView;
 
@@ -62,6 +62,13 @@ impl RootView {
         subscriptions.push(cx.observe_global::<RouterState>(|this, cx| {
             this.sync_route(cx);
         }));
+        subscriptions.push(cx.observe(&self.runtime.session, |this, _, cx| {
+            favorites::sync_session(&this.runtime, cx);
+            cx.notify();
+        }));
+        subscriptions.push(cx.observe(&self.runtime.favorites, |_, _, cx| {
+            cx.notify();
+        }));
         self._subscriptions = subscriptions;
     }
 
@@ -72,6 +79,7 @@ impl RootView {
         } else {
             auth::refresh_login_summary(&self.runtime, cx);
         }
+        favorites::sync_session(&self.runtime, cx);
     }
 
     pub(super) fn spawn_runtime_tick(&mut self, tick_ms: u64, cx: &mut Context<Self>) {

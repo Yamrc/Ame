@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nekowg::{AnyElement, Context, Window, div, prelude::*, px};
+use nekowg::{AnyElement, App, Context, Window, div, prelude::*, px};
 
 use crate::app::route::AppRoute;
 use crate::app::router;
@@ -9,7 +9,7 @@ use crate::component::{
     nav_bar::{self, NavBarActions, NavBarModel},
     title_bar::{self, TitleBarActions, TitleBarModel},
 };
-use crate::domain::player;
+use crate::domain::{favorites, player};
 
 use super::super::RootView;
 
@@ -95,8 +95,29 @@ impl RootView {
     pub(super) fn render_bottom_chrome(&self, cx: &mut Context<Self>) -> AnyElement {
         let root_entity = cx.entity();
         let player = self.env.player().read(cx).clone();
-        let (current_song, current_artist, current_cover_url) = player
-            .current_item()
+        let current_item = player.current_item().cloned();
+        let session_user_id = self.runtime.session.read(cx).auth_user_id;
+        let favorites_state = self.runtime.favorites.read(cx).clone();
+        let favorite_ready = favorites_state.is_ready_for(session_user_id);
+        let current_track_id = current_item.as_ref().map(|item| item.id);
+        let favorite_liked =
+            current_track_id.is_some_and(|track_id| favorites_state.is_liked(track_id));
+        let favorite_pending =
+            current_track_id.is_some_and(|track_id| favorites_state.is_pending(track_id));
+        let on_toggle_favorite: Option<bottom_bar::BottomBarAction> = match current_track_id {
+            Some(track_id) => {
+                let root_entity = root_entity.clone();
+                let action: bottom_bar::BottomBarAction = Arc::new(move |cx: &mut App| {
+                    root_entity.update(cx, |this, cx| {
+                        favorites::toggle_track_like(&this.runtime, track_id, cx);
+                    });
+                });
+                Some(action)
+            }
+            None => None,
+        };
+        let (current_song, current_artist, current_cover_url) = current_item
+            .as_ref()
             .map(|item| {
                 (
                     item.name.clone(),
@@ -107,9 +128,13 @@ impl RootView {
             .unwrap_or_else(|| ("未播放".to_string(), "未知作家".to_string(), None));
         let bottom = bottom_bar::render(
             &bottom_bar::BottomBarModel {
+                has_current_song: current_item.is_some(),
                 current_song: current_song.into(),
                 current_artist: current_artist.into(),
                 current_cover_url: current_cover_url.map(Into::into),
+                favorite_liked,
+                favorite_enabled: favorite_ready,
+                favorite_pending,
                 is_playing: player.is_playing,
                 mode: player.mode,
                 volume: player.volume,
@@ -135,6 +160,7 @@ impl RootView {
                         root_entity.update(cx, |this, cx| this.tray_next(cx));
                     })
                 },
+                on_toggle_favorite,
                 on_open_queue: {
                     let root_entity = root_entity.clone();
                     Arc::new(move |cx| {

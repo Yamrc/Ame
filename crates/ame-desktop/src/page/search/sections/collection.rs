@@ -4,10 +4,11 @@ use nekowg::{AnyElement, MouseButton, div, prelude::*, px};
 
 use crate::component::button;
 use crate::component::page;
+use crate::component::track_item::TrackItemFavoriteState;
 
 use super::{
-    NavigateHandler, PlaySongHandler, PlaylistOpenHandler, SEARCH_TYPE_CARD_COLUMNS,
-    SearchCollectionState, SearchPageState, SearchRouteType, render_album_card_ref,
+    NavigateHandler, SEARCH_TYPE_CARD_COLUMNS, SearchCollectionState, SearchFavoriteState,
+    SearchPageState, SearchRouteType, SearchTypeRenderActions, render_album_card_ref,
     render_artist_card_ref, render_playlist_card_ref, render_track_row_ref,
 };
 
@@ -15,10 +16,8 @@ pub(crate) fn render_type_page(
     route_type: SearchRouteType,
     search_state: &SearchPageState,
     current_playing_track_id: Option<i64>,
-    on_play_song: PlaySongHandler,
-    on_enqueue_song: super::EnqueueSongHandler,
-    on_open_playlist: PlaylistOpenHandler,
-    on_load_more: NavigateHandler,
+    favorite_state: SearchFavoriteState,
+    actions: SearchTypeRenderActions,
 ) -> AnyElement {
     match route_type {
         SearchRouteType::Artists => render_collection_page(
@@ -36,7 +35,7 @@ pub(crate) fn render_type_page(
                 px(24.),
                 "暂无艺人结果",
             ),
-            on_load_more,
+            actions.on_load_more.clone(),
         ),
         SearchRouteType::Albums => render_collection_page(
             route_type,
@@ -53,12 +52,13 @@ pub(crate) fn render_type_page(
                 px(24.),
                 "暂无专辑结果",
             ),
-            on_load_more,
+            actions.on_load_more.clone(),
         ),
         SearchRouteType::Tracks => render_collection_page(
             route_type,
             &search_state.tracks,
             {
+                let favorite_state = favorite_state.clone();
                 let rows = search_state
                     .tracks
                     .items
@@ -67,16 +67,25 @@ pub(crate) fn render_type_page(
                     .enumerate()
                     .map(|(index, song)| {
                         let is_playing = current_playing_track_id == Some(song.id);
+                        let favorite = TrackItemFavoriteState {
+                            liked: favorite_state.favorites.is_liked(song.id),
+                            enabled: favorite_state.ready,
+                            pending: favorite_state.favorites.is_pending(song.id),
+                        };
                         let song_for_play = song.clone();
                         let song_for_enqueue = song.clone();
-                        let on_play_song = on_play_song.clone();
-                        let on_enqueue_song = on_enqueue_song.clone();
+                        let toggle_song_id = song.id;
+                        let on_play_song = actions.on_play_song.clone();
+                        let on_enqueue_song = actions.on_enqueue_song.clone();
+                        let on_toggle_favorite = actions.on_toggle_favorite.clone();
                         render_track_row_ref(
                             format!("search-type-track-{index}-{}", song.id),
                             song,
                             is_playing,
+                            favorite,
                             move |cx| on_play_song(song_for_play.clone(), cx),
                             move |cx| on_enqueue_song(song_for_enqueue.clone(), cx),
+                            move |cx| on_toggle_favorite(toggle_song_id, cx),
                         )
                     })
                     .collect::<Vec<_>>();
@@ -86,7 +95,7 @@ pub(crate) fn render_type_page(
                     page::stacked_rows(rows, px(8.))
                 }
             },
-            on_load_more,
+            actions.on_load_more.clone(),
         ),
         SearchRouteType::Playlists => render_collection_page(
             route_type,
@@ -99,7 +108,7 @@ pub(crate) fn render_type_page(
                     .iter()
                     .map(|playlist| {
                         let playlist_id = playlist.id;
-                        let on_open_playlist = on_open_playlist.clone();
+                        let on_open_playlist = actions.on_open_playlist.clone();
                         render_playlist_card_ref(
                             playlist,
                             Some(Rc::new(move |cx| on_open_playlist(playlist_id, cx))),
@@ -110,7 +119,7 @@ pub(crate) fn render_type_page(
                 px(24.),
                 "暂无歌单结果",
             ),
-            on_load_more,
+            actions.on_load_more,
         ),
     }
 }

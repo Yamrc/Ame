@@ -9,9 +9,11 @@ use nekowg::{AnyElement, App, SharedString, px};
 use crate::component::{
     cover_card::{self, ArtistCoverCardProps, CoverCardActions},
     playlist_card::{self, PlaylistCardActions, PlaylistCardProps},
+    track_item::TrackItemFavoriteState,
     short_track_item::{self, ShortTrackItemActions, ShortTrackItemProps},
     track_item::{self, TrackItemActions, TrackItemProps},
 };
+use crate::domain::favorites::FavoritesState;
 
 use super::state::{SearchCollectionState, SearchPageState};
 use super::types::{
@@ -29,10 +31,26 @@ const OVERVIEW_TRACK_PLACEHOLDER_HEIGHT: f32 = SHORT_TRACK_HEIGHT + 8.0;
 
 pub(crate) type PlaySongHandler = Arc<dyn Fn(SearchSong, &mut App)>;
 pub(crate) type EnqueueSongHandler = Arc<dyn Fn(SearchSong, &mut App)>;
+pub(crate) type FavoriteSongHandler = Rc<dyn Fn(i64, &mut App)>;
 pub(crate) type NavigateHandler = Rc<dyn Fn(&mut App)>;
 pub(crate) type PlaylistOpenHandler = Rc<dyn Fn(i64, &mut App)>;
 pub(crate) type SearchTypeNavigateHandler = Rc<dyn Fn(SearchRouteType, &mut App)>;
 type CardOpenHandler = Rc<dyn Fn(&mut App)>;
+
+#[derive(Clone)]
+pub(crate) struct SearchFavoriteState {
+    pub favorites: FavoritesState,
+    pub ready: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct SearchTypeRenderActions {
+    pub on_play_song: PlaySongHandler,
+    pub on_enqueue_song: EnqueueSongHandler,
+    pub on_toggle_favorite: FavoriteSongHandler,
+    pub on_open_playlist: PlaylistOpenHandler,
+    pub on_load_more: NavigateHandler,
+}
 
 pub(crate) use collection::render_type_page;
 pub(crate) use overview::render_overview_sections;
@@ -41,8 +59,10 @@ fn render_track_row(
     state_id: impl Into<SharedString>,
     song: SearchSong,
     is_playing: bool,
+    favorite: TrackItemFavoriteState,
     on_play: impl Fn(&mut App) + 'static,
     on_enqueue: impl Fn(&mut App) + 'static,
+    on_toggle_favorite: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
     track_item::render(
         TrackItemProps {
@@ -56,10 +76,12 @@ fn render_track_row(
             cover_url: song.cover_url,
             show_cover: true,
             is_playing,
+            favorite,
         },
         TrackItemActions {
             on_play: Some(Rc::new(on_play)),
             on_enqueue: Some(Rc::new(on_enqueue)),
+            on_toggle_favorite: Some(Rc::new(on_toggle_favorite)),
             ..TrackItemActions::default()
         },
     )
@@ -69,10 +91,20 @@ fn render_track_row_ref(
     state_id: impl Into<SharedString>,
     song: &SearchSong,
     is_playing: bool,
+    favorite: TrackItemFavoriteState,
     on_play: impl Fn(&mut App) + 'static,
     on_enqueue: impl Fn(&mut App) + 'static,
+    on_toggle_favorite: impl Fn(&mut App) + 'static,
 ) -> AnyElement {
-    render_track_row(state_id, song.clone(), is_playing, on_play, on_enqueue)
+    render_track_row(
+        state_id,
+        song.clone(),
+        is_playing,
+        favorite,
+        on_play,
+        on_enqueue,
+        on_toggle_favorite,
+    )
 }
 
 fn render_short_track_item(

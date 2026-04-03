@@ -1,6 +1,8 @@
 use nekowg::AnyElement;
 
-use crate::component::track_item::{self, TrackItemActions, TrackItemProps};
+use crate::component::track_item::{
+    self, TrackItemActions, TrackItemFavoriteState, TrackItemProps,
+};
 use crate::domain::player::QueueItem;
 
 use super::QueueActionHandler;
@@ -9,7 +11,9 @@ pub(super) fn queue_track_row(
     state_id: impl Into<nekowg::SharedString>,
     item: QueueItem,
     is_playing: bool,
+    favorite: TrackItemFavoriteState,
     on_play: Option<QueueActionHandler>,
+    on_toggle_favorite: QueueActionHandler,
     on_remove: Option<QueueActionHandler>,
 ) -> AnyElement {
     track_item::render(
@@ -24,9 +28,11 @@ pub(super) fn queue_track_row(
             cover_url: item.cover_url,
             show_cover: true,
             is_playing,
+            favorite,
         },
         TrackItemActions {
             on_play,
+            on_toggle_favorite: Some(on_toggle_favorite),
             on_remove,
             ..TrackItemActions::default()
         },

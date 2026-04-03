@@ -8,7 +8,7 @@ use nekowg::{
 
 use crate::animation::{Linear, TransitionExt};
 use crate::component::context_menu::ContextMenuExt;
-use crate::component::theme;
+use crate::component::{button, icon, theme};
 use crate::util::url::image_resize_url;
 
 type TrackAction = Rc<dyn Fn(&mut App)>;
@@ -20,9 +20,19 @@ const ROW_VERTICAL_PADDING: f32 = 4.;
 const ROW_CONTENT_GAP: f32 = 10.;
 const TITLE_COLUMN_MAX_WIDTH: f32 = 420.;
 const ALBUM_COLUMN_WIDTH: f32 = 240.;
+const FAVORITE_BUTTON_SIZE: f32 = 28.;
 const DURATION_COLUMN_WIDTH: f32 = 56.;
+const META_COLUMN_WIDTH: f32 = FAVORITE_BUTTON_SIZE + 8. + DURATION_COLUMN_WIDTH;
+const FAVORITE_ICON_SIZE: f32 = 15.;
 const TITLE_ALIAS_COLOR: u32 = 0x6F6F6F;
 const ROW_HOVER_DURATION_MS: u64 = 160;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrackItemFavoriteState {
+    pub liked: bool,
+    pub enabled: bool,
+    pub pending: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrackItemProps {
@@ -36,12 +46,14 @@ pub struct TrackItemProps {
     pub cover_url: Option<String>,
     pub show_cover: bool,
     pub is_playing: bool,
+    pub favorite: TrackItemFavoriteState,
 }
 
 #[derive(Clone, Default)]
 pub struct TrackItemActions {
     pub on_play: Option<TrackAction>,
     pub on_enqueue: Option<TrackAction>,
+    pub on_toggle_favorite: Option<TrackAction>,
     pub on_remove: Option<TrackAction>,
     pub on_open_artist: Option<TrackAction>,
     pub on_open_album: Option<TrackAction>,
@@ -73,6 +85,7 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
     let album = props.album.clone().unwrap_or_default().trim().to_string();
     let duration = props.duration_ms.map(format_duration).unwrap_or_default();
     let on_play_row = actions.on_play.clone();
+    let on_toggle_favorite = actions.on_toggle_favorite.clone();
     let row_id: SharedString = format!("track-item-row-{}", props.state_id).into();
     let base_bg = if props.is_playing {
         rgba(theme::with_alpha(theme::COLOR_PRIMARY, 0x18))
@@ -105,6 +118,43 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
     } else {
         None
     };
+
+    let favorite_interactive = props.favorite.enabled && !props.favorite.pending;
+    let favorite_icon = if props.favorite.liked {
+        icon::IconName::HeartSolid
+    } else {
+        icon::IconName::Heart
+    };
+    let favorite_color = if props.favorite.liked {
+        theme::COLOR_PRIMARY
+    } else {
+        theme::COLOR_SECONDARY
+    };
+    let favorite_button_id = format!("track-item-favorite-{}", props.state_id);
+    let favorite_button = button::icon_interactive(
+        favorite_button_id,
+        button::icon_base(button::ButtonStyle::default())
+            .size(px(FAVORITE_BUTTON_SIZE))
+            .text_color(rgb(favorite_color))
+            .when(!favorite_interactive, |this| {
+                this.opacity(0.45).cursor_default()
+            })
+            .when(favorite_interactive, |this| {
+                let on_toggle_favorite = on_toggle_favorite.clone();
+                this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    cx.stop_propagation();
+                    if let Some(on_toggle_favorite) = on_toggle_favorite.as_ref() {
+                        on_toggle_favorite(cx);
+                    }
+                })
+            })
+            .child(icon::render(
+                favorite_icon,
+                FAVORITE_ICON_SIZE,
+                favorite_color,
+            )),
+        button::ButtonStyle::default(),
+    );
 
     let row = div()
         .id(row_id.clone())
@@ -178,12 +228,21 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
         .child(div().flex_1())
         .child(
             div()
-                .w(px(DURATION_COLUMN_WIDTH))
+                .w(px(META_COLUMN_WIDTH))
                 .flex_shrink_0()
-                .text_right()
-                .text_size(px(13.))
-                .text_color(rgb(info_color))
-                .child(duration),
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(px(8.))
+                .child(favorite_button)
+                .child(
+                    div()
+                        .w(px(DURATION_COLUMN_WIDTH))
+                        .text_right()
+                        .text_size(px(13.))
+                        .text_color(rgb(info_color))
+                        .child(duration),
+                ),
         )
         .with_transition(row_id)
         .transition_on_hover(
@@ -210,6 +269,32 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
         }
         if let Some(on_enqueue) = actions.on_enqueue.clone() {
             menu = menu.item("入队", move |_window, cx| on_enqueue(cx));
+        }
+        if props.favorite.pending {
+            let label = if props.favorite.liked {
+                "取消收藏中..."
+            } else {
+                "收藏中..."
+            };
+            menu = menu.item_disabled(label, true, |_window, _cx| {});
+        } else if props.favorite.enabled {
+            if let Some(on_toggle_favorite) = actions.on_toggle_favorite.clone() {
+                let label = if props.favorite.liked {
+                    "取消收藏"
+                } else {
+                    "收藏"
+                };
+                menu = menu.item(label, move |_window, cx| on_toggle_favorite(cx));
+            } else {
+                menu = menu.item_disabled("收藏", true, |_window, _cx| {});
+            }
+        } else {
+            let label = if props.favorite.liked {
+                "取消收藏"
+            } else {
+                "收藏"
+            };
+            menu = menu.item_disabled(label, true, |_window, _cx| {});
         }
         if let Some(on_remove) = actions.on_remove.clone() {
             menu = menu.item("移出队列", move |_window, cx| on_remove(cx));

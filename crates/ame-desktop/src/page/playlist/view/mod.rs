@@ -9,9 +9,10 @@ use nekowg::{
 
 use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
-use crate::domain::player;
+use crate::domain::{favorites, player};
 use crate::page::playlist::sections::{
-    PlaylistListRenderCache, ReplaceQueueHandler, TrackActionHandler, render_playlist_page,
+    FavoriteTrackHandler, PlaylistFavoriteState, PlaylistListRenderCache,
+    PlaylistRenderActions, ReplaceQueueHandler, TrackActionHandler, render_playlist_page,
 };
 use crate::page::state::freeze_page_state;
 
@@ -23,6 +24,7 @@ pub struct PlaylistPageView {
     playlist_id: i64,
     state: Entity<PlaylistPageState>,
     last_session_key: super::models::SessionLoadKey,
+    last_favorite_change_revision: u64,
     heavy_resources: Option<PlaylistListRenderCache>,
     active: bool,
     _subscriptions: Vec<Subscription>,
@@ -37,12 +39,14 @@ impl PlaylistPageView {
     ) -> Self {
         let state = cx.new(|_| PlaylistPageState::default());
         let last_session_key = super::service::session_load_key(&runtime, cx);
+        let last_favorite_change_revision = runtime.favorites.read(cx).change_revision;
         let mut view = Self {
             runtime,
             page_scroll_handle,
             playlist_id,
             state,
             last_session_key,
+            last_favorite_change_revision,
             heavy_resources: None,
             active: false,
             _subscriptions: Vec::new(),
@@ -58,6 +62,9 @@ impl PlaylistPageView {
         subscriptions.push(cx.observe(&view.runtime.player, |this, _, cx| {
             this.refresh_heavy_resources(cx);
             cx.notify();
+        }));
+        subscriptions.push(cx.observe(&view.runtime.favorites, |this, _, cx| {
+            this.handle_favorites_change(cx);
         }));
         view._subscriptions = subscriptions;
         view.refresh_heavy_resources(cx);
@@ -96,12 +103,27 @@ impl PlaylistPageView {
             }
         });
     }
+
+    fn handle_favorites_change(&mut self, cx: &mut Context<Self>) {
+        let favorites = self.runtime.favorites.read(cx).clone();
+        let changed = favorites.change_revision != self.last_favorite_change_revision;
+        self.last_favorite_change_revision = favorites.change_revision;
+
+        if changed && self.active && favorites.liked_playlist_id == Some(self.playlist_id) {
+            self.ensure_loaded(cx);
+        } else {
+            cx.notify();
+        }
+    }
 }
 
 impl Render for PlaylistPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let playlist_state = self.state.read(cx);
         let page = cx.entity();
+        let session_user_id = self.runtime.session.read(cx).auth_user_id;
+        let favorites_state = self.runtime.favorites.read(cx).clone();
+        let favorite_ready = favorites_state.is_ready_for(session_user_id);
         let on_play_track: TrackActionHandler = {
             let page = page.clone();
             Rc::new(move |track, cx| {
@@ -120,6 +142,14 @@ impl Render for PlaylistPageView {
                 });
             })
         };
+        let on_toggle_favorite: FavoriteTrackHandler = {
+            let page = page.clone();
+            Rc::new(move |track_id, cx| {
+                page.update(cx, |this, cx| {
+                    favorites::toggle_track_like(&this.runtime, track_id, cx);
+                });
+            })
+        };
         let on_replace_queue: ReplaceQueueHandler = {
             let page = cx.entity();
             Rc::new(move |_playlist_id, cx| {
@@ -132,9 +162,16 @@ impl Render for PlaylistPageView {
             &playlist_state.page,
             self.heavy_resources.as_ref(),
             &self.page_scroll_handle,
-            on_play_track,
-            on_enqueue_track,
-            on_replace_queue,
+            PlaylistFavoriteState {
+                favorites: favorites_state,
+                ready: favorite_ready,
+            },
+            PlaylistRenderActions {
+                on_play_track,
+                on_enqueue_track,
+                on_toggle_favorite,
+                on_replace_queue,
+            },
         )
     }
 }

@@ -8,13 +8,30 @@ use nekowg::{
 };
 
 use crate::component::{button, page, theme, virtual_list};
+use crate::component::track_item::TrackItemFavoriteState;
+use crate::domain::favorites::FavoritesState;
 use crate::page::playlist::models::{PlaylistPage, PlaylistTrackRow};
 use crate::page::state::DataState;
 
 pub(crate) use track::track_row;
 
 pub(crate) type TrackActionHandler = Rc<dyn Fn(PlaylistTrackRow, &mut App)>;
+pub(crate) type FavoriteTrackHandler = Rc<dyn Fn(i64, &mut App)>;
 pub(crate) type ReplaceQueueHandler = Rc<dyn Fn(i64, &mut App)>;
+
+#[derive(Clone)]
+pub(crate) struct PlaylistFavoriteState {
+    pub favorites: FavoritesState,
+    pub ready: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct PlaylistRenderActions {
+    pub on_play_track: TrackActionHandler,
+    pub on_enqueue_track: TrackActionHandler,
+    pub on_toggle_favorite: FavoriteTrackHandler,
+    pub on_replace_queue: ReplaceQueueHandler,
+}
 
 pub(crate) struct PlaylistListRenderCache {
     pub playlist_id: i64,
@@ -30,9 +47,8 @@ pub(crate) fn render_playlist_page(
     state: &DataState<Option<PlaylistPage>>,
     render_cache: Option<&PlaylistListRenderCache>,
     page_scroll_handle: &ScrollHandle,
-    on_play_track: TrackActionHandler,
-    on_enqueue_track: TrackActionHandler,
-    on_replace_queue: ReplaceQueueHandler,
+    favorite_state: PlaylistFavoriteState,
+    actions: PlaylistRenderActions,
 ) -> AnyElement {
     let playlist_rows = render_cache.and_then(|cache| {
         if cache.tracks.is_empty() {
@@ -42,8 +58,10 @@ pub(crate) fn render_playlist_page(
         let tracks = cache.tracks.clone();
         let heights = cache.heights.clone();
         let current_playing_track_id = cache.current_playing_track_id;
-        let on_play_track = on_play_track.clone();
-        let on_enqueue_track = on_enqueue_track.clone();
+        let favorite_state = favorite_state.clone();
+        let on_play_track = actions.on_play_track.clone();
+        let on_enqueue_track = actions.on_enqueue_track.clone();
+        let on_toggle_favorite = actions.on_toggle_favorite.clone();
         let list = virtual_list::v_virtual_list(
             ("playlist-tracks", cache.playlist_id.unsigned_abs() as usize),
             heights,
@@ -52,16 +70,25 @@ pub(crate) fn render_playlist_page(
                     .map(|index| {
                         let track = tracks[index].clone();
                         let is_playing = current_playing_track_id == Some(track.id);
+                        let favorite = TrackItemFavoriteState {
+                            liked: favorite_state.favorites.is_liked(track.id),
+                            enabled: favorite_state.ready,
+                            pending: favorite_state.favorites.is_pending(track.id),
+                        };
                         let play_track = track.clone();
                         let queue_track = track.clone();
+                        let toggle_track_id = track.id;
                         let on_play_track = on_play_track.clone();
                         let on_enqueue_track = on_enqueue_track.clone();
+                        let on_toggle_favorite = on_toggle_favorite.clone();
                         nekowg::div().w_full().pb(px(4.)).child(track::track_row(
                             format!("playlist:{playlist_id}:row:{index}:track:{}", track.id),
                             track,
                             is_playing,
+                            favorite,
                             move |cx| on_play_track(play_track.clone(), cx),
                             move |cx| on_enqueue_track(queue_track.clone(), cx),
+                            move |cx| on_toggle_favorite(toggle_track_id, cx),
                         ))
                     })
                     .collect::<Vec<_>>()
@@ -77,7 +104,7 @@ pub(crate) fn render_playlist_page(
         if cache.tracks.is_empty() {
             return None;
         }
-        let on_replace_queue = on_replace_queue.clone();
+        let on_replace_queue = actions.on_replace_queue.clone();
         Some(
             button::primary_pill("替换队列并播放")
                 .on_mouse_down(nekowg::MouseButton::Left, move |_, _, cx| {

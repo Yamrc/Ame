@@ -9,12 +9,28 @@ use nekowg::{
 };
 
 use crate::component::{button, theme, virtual_list};
+use crate::component::track_item::TrackItemFavoriteState;
+use crate::domain::favorites::FavoritesState;
 use crate::domain::player::QueueItem;
 
 use self::track::queue_track_row;
 
 pub(crate) type QueueItemActionHandler = Rc<dyn Fn(i64, &mut App)>;
 pub(crate) type QueueActionHandler = Rc<dyn Fn(&mut App)>;
+
+#[derive(Clone)]
+pub(crate) struct NextQueueFavoriteState {
+    pub favorites: FavoritesState,
+    pub ready: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct NextQueueActions {
+    pub on_play_item: QueueItemActionHandler,
+    pub on_toggle_favorite: QueueItemActionHandler,
+    pub on_remove_item: QueueItemActionHandler,
+    pub on_clear_queue: QueueActionHandler,
+}
 
 pub(crate) struct NextQueueRenderCache {
     pub current_track: Option<QueueItem>,
@@ -25,17 +41,18 @@ pub(crate) struct NextQueueRenderCache {
 pub(crate) fn render_next_page(
     render_cache: &NextQueueRenderCache,
     page_scroll_handle: &ScrollHandle,
-    on_play_item: QueueItemActionHandler,
-    on_remove_item: QueueItemActionHandler,
-    on_clear_queue: QueueActionHandler,
+    favorite_state: NextQueueFavoriteState,
+    actions: NextQueueActions,
 ) -> AnyElement {
     let queue_list = if render_cache.upcoming.is_empty() {
         None
     } else {
         let upcoming = render_cache.upcoming.clone();
         let heights = render_cache.heights.clone();
-        let on_play_item = on_play_item.clone();
-        let on_remove_item = on_remove_item.clone();
+        let favorite_state = favorite_state.clone();
+        let on_play_item = actions.on_play_item.clone();
+        let on_toggle_favorite = actions.on_toggle_favorite.clone();
+        let on_remove_item = actions.on_remove_item.clone();
         let list = virtual_list::v_virtual_list(
             ("next-queue", upcoming.len()),
             heights,
@@ -44,14 +61,23 @@ pub(crate) fn render_next_page(
                     .map(|index| {
                         let item = upcoming[index].clone();
                         let play_id = item.id;
+                        let favorite_id = item.id;
                         let remove_id = item.id;
+                        let favorite = TrackItemFavoriteState {
+                            liked: favorite_state.favorites.is_liked(item.id),
+                            enabled: favorite_state.ready,
+                            pending: favorite_state.favorites.is_pending(item.id),
+                        };
                         let on_play_item = on_play_item.clone();
+                        let on_toggle_favorite = on_toggle_favorite.clone();
                         let on_remove_item = on_remove_item.clone();
                         nekowg::div().pb(px(4.)).child(queue_track_row(
                             format!("next-queue:row:{index}:track:{}", item.id),
                             item,
                             false,
+                            favorite,
                             Some(Rc::new(move |cx| on_play_item(play_id, cx))),
+                            Rc::new(move |cx| on_toggle_favorite(favorite_id, cx)),
                             Some(Rc::new(move |cx| on_remove_item(remove_id, cx))),
                         ))
                     })
@@ -66,7 +92,7 @@ pub(crate) fn render_next_page(
     };
 
     let clear_button = if render_cache.current_track.is_some() || queue_list.is_some() {
-        let on_clear_queue = on_clear_queue.clone();
+        let on_clear_queue = actions.on_clear_queue.clone();
         Some(
             button::pill_base("清空队列")
                 .on_mouse_down(MouseButton::Left, move |_, _, cx| on_clear_queue(cx))
@@ -77,11 +103,20 @@ pub(crate) fn render_next_page(
     };
 
     let now_playing = if let Some(track) = render_cache.current_track.clone() {
+        let favorite = TrackItemFavoriteState {
+            liked: favorite_state.favorites.is_liked(track.id),
+            enabled: favorite_state.ready,
+            pending: favorite_state.favorites.is_pending(track.id),
+        };
+        let favorite_id = track.id;
+        let on_toggle_favorite = actions.on_toggle_favorite.clone();
         queue_track_row(
             format!("next-now-playing:track:{}", track.id),
             track,
             true,
+            favorite,
             None,
+            Rc::new(move |cx| on_toggle_favorite(favorite_id, cx)),
             None,
         )
     } else {

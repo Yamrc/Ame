@@ -8,6 +8,7 @@ use crate::app::audio_bridge::AudioBridgeEntity;
 use crate::app::env::AppEnv;
 use crate::app::state::AppEntity;
 use crate::domain::cache::CacheService;
+use crate::domain::favorites::FavoritesState;
 use crate::domain::player::{PlaybackMode, PlayerEntity, QueueItem};
 use crate::domain::session::{PersistedSessionIdentity, SessionState};
 use crate::domain::settings::{CloseBehavior, HomeArtistLanguage};
@@ -225,6 +226,7 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
             search_query: String::new(),
             home_artist_language,
         }),
+        favorites: cx.new(|_| FavoritesState::default()),
         player: cx.new(move |_| player_state.clone()),
         shell: cx.new(move |_| shell_state.clone()),
         session: cx.new(move |_| session_state.clone()),

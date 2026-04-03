@@ -7,8 +7,10 @@ use nekowg::{Context, Render, ScrollHandle, Subscription, Window, prelude::*, px
 
 use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
+use crate::domain::favorites;
 use crate::page::next::sections::{
-    NextQueueRenderCache, QueueActionHandler, QueueItemActionHandler, render_next_page,
+    NextQueueActions, NextQueueFavoriteState, NextQueueRenderCache, QueueActionHandler,
+    QueueItemActionHandler, render_next_page,
 };
 
 pub struct NextPageView {
@@ -39,6 +41,9 @@ impl NextPageView {
             this.refresh_heavy_resources(cx);
             cx.notify();
         }));
+        subscriptions.push(cx.observe(&view.runtime.favorites, |_, _, cx| {
+            cx.notify();
+        }));
         view._subscriptions = subscriptions;
         view.refresh_heavy_resources(cx);
         view
@@ -66,6 +71,9 @@ impl NextPageView {
 impl Render for NextPageView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let page = cx.entity();
+        let session_user_id = self.runtime.session.read(cx).auth_user_id;
+        let favorites_state = self.runtime.favorites.read(cx).clone();
+        let favorite_ready = favorites_state.is_ready_for(session_user_id);
 
         let on_play_item: QueueItemActionHandler = {
             let page = page.clone();
@@ -79,6 +87,14 @@ impl Render for NextPageView {
                 page.update(cx, |this, cx| this.remove_item(item_id, cx));
             })
         };
+        let on_toggle_favorite: QueueItemActionHandler = {
+            let page = page.clone();
+            Rc::new(move |item_id, cx| {
+                page.update(cx, |this, cx| {
+                    favorites::toggle_track_like(&this.runtime, item_id, cx);
+                });
+            })
+        };
         let on_clear_queue: QueueActionHandler = {
             let page = page.clone();
             Rc::new(move |cx| {
@@ -89,9 +105,16 @@ impl Render for NextPageView {
         render_next_page(
             &self.heavy_resources,
             &self.page_scroll_handle,
-            on_play_item,
-            on_remove_item,
-            on_clear_queue,
+            NextQueueFavoriteState {
+                favorites: favorites_state,
+                ready: favorite_ready,
+            },
+            NextQueueActions {
+                on_play_item,
+                on_toggle_favorite,
+                on_remove_item,
+                on_clear_queue,
+            },
         )
     }
 }

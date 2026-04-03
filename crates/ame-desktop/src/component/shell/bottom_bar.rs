@@ -14,11 +14,17 @@ use crate::component::{
 use crate::domain::player::PlaybackMode;
 use crate::util::url::image_resize_url;
 
+pub type BottomBarAction = Arc<dyn Fn(&mut App)>;
+
 #[derive(Debug, Clone)]
 pub struct BottomBarModel {
+    pub has_current_song: bool,
     pub current_song: SharedString,
     pub current_artist: SharedString,
     pub current_cover_url: Option<SharedString>,
+    pub favorite_liked: bool,
+    pub favorite_enabled: bool,
+    pub favorite_pending: bool,
     pub is_playing: bool,
     pub mode: PlaybackMode,
     pub volume: f32,
@@ -28,11 +34,12 @@ pub struct BottomBarModel {
 
 #[derive(Clone)]
 pub struct BottomBarActions {
-    pub on_prev: Arc<dyn Fn(&mut App)>,
-    pub on_toggle: Arc<dyn Fn(&mut App)>,
-    pub on_next: Arc<dyn Fn(&mut App)>,
-    pub on_open_queue: Arc<dyn Fn(&mut App)>,
-    pub on_cycle_mode: Arc<dyn Fn(&mut App)>,
+    pub on_prev: BottomBarAction,
+    pub on_toggle: BottomBarAction,
+    pub on_next: BottomBarAction,
+    pub on_toggle_favorite: Option<BottomBarAction>,
+    pub on_open_queue: BottomBarAction,
+    pub on_cycle_mode: BottomBarAction,
 }
 
 pub fn left_section(content: AnyElement) -> Div {
@@ -121,6 +128,7 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
             .into_any_element()
     };
 
+    let favorite_interactive = model.favorite_enabled && !model.favorite_pending;
     let left_content = div()
         .flex()
         .items_center()
@@ -139,23 +147,65 @@ pub fn render(model: &BottomBarModel, actions: &BottomBarActions) -> AnyElement 
         .child(
             div()
                 .flex()
-                .flex_col()
+                .items_center()
+                .gap_2()
                 .child(
                     div()
-                        .font_weight(FontWeight::BOLD)
-                        .text_size(px(16.))
-                        .truncate()
-                        .max_w_64()
-                        .child(model.current_song.clone()),
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .font_weight(FontWeight::BOLD)
+                                .text_size(px(16.))
+                                .truncate()
+                                .max_w_64()
+                                .child(model.current_song.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_color(rgb(theme::COLOR_SECONDARY))
+                                .text_size(px(12.))
+                                .truncate()
+                                .max_w_64()
+                                .child(model.current_artist.clone()),
+                        ),
                 )
-                .child(
-                    div()
-                        .text_color(rgb(theme::COLOR_SECONDARY))
-                        .text_size(px(12.))
-                        .truncate()
-                        .max_w_64()
-                        .child(model.current_artist.clone()),
-                ),
+                .children(model.has_current_song.then(|| {
+                    let favorite_color = if model.favorite_liked {
+                        theme::COLOR_PRIMARY
+                    } else {
+                        theme::COLOR_SECONDARY
+                    };
+                    let on_toggle_favorite = actions.on_toggle_favorite.clone();
+                    button::icon_interactive(
+                        "player-favorite",
+                        button::icon_base(button::ButtonStyle::default())
+                            .size(px(32.))
+                            .text_color(rgb(favorite_color))
+                            .when(!favorite_interactive, |this| {
+                                this.opacity(0.45).cursor_default()
+                            })
+                            .when(favorite_interactive, |this| {
+                                this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    if let Some(on_toggle_favorite) = on_toggle_favorite.as_ref() {
+                                        on_toggle_favorite(cx);
+                                    }
+                                })
+                            })
+                            .child(icon::render(
+                                if model.favorite_liked {
+                                    IconName::HeartSolid
+                                } else {
+                                    IconName::Heart
+                                },
+                                15.,
+                                favorite_color,
+                            )),
+                        button::ButtonStyle::default(),
+                    )
+                    .into_any_element()
+                })),
         )
         .into_any_element();
 

@@ -13,6 +13,7 @@ use crate::app::audio_bridge::AudioBridgeEntity;
 use crate::app::env::AppEnv;
 use crate::app::state::AppEntity;
 use crate::domain::cache::CacheService;
+use crate::domain::favorites::FavoritesState;
 use crate::domain::player::PlayerEntity;
 use crate::domain::session::SessionState;
 use crate::domain::shell::ShellState;
@@ -49,6 +50,7 @@ pub struct AppServices {
 pub struct AppRuntime {
     pub services: AppServices,
     pub app: Entity<AppEntity>,
+    pub favorites: Entity<FavoritesState>,
     pub player: Entity<PlayerEntity>,
     pub shell: Entity<ShellState>,
     pub session: Entity<SessionState>,

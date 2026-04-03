@@ -1,8 +1,6 @@
 mod load;
 
-use nekowg::{
-    App, Context, Entity, FontWeight, Render, Subscription, Window, div, prelude::*, px, rgb,
-};
+use nekowg::{Context, Entity, FontWeight, Render, Subscription, Window, div, prelude::*, px, rgb};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -11,10 +9,11 @@ use crate::app::route::AppRoute;
 use crate::app::router;
 use crate::app::runtime::AppRuntime;
 use crate::component::{page, theme};
-use crate::domain::player;
+use crate::domain::{favorites, player};
 
 use super::sections::{
-    EnqueueSongHandler, PlaySongHandler, PlaylistOpenHandler, SearchTypeNavigateHandler,
+    EnqueueSongHandler, FavoriteSongHandler, PlaySongHandler, PlaylistOpenHandler,
+    SearchFavoriteState, SearchTypeNavigateHandler, SearchTypeRenderActions,
     render_overview_sections, render_type_page,
 };
 use super::state::SearchPageState;
@@ -46,6 +45,9 @@ impl SearchPageView {
         subscriptions.push(cx.observe(&runtime.player, |_, _, cx| {
             cx.notify();
         }));
+        subscriptions.push(cx.observe(&runtime.favorites, |_, _, cx| {
+            cx.notify();
+        }));
         Self {
             runtime,
             route,
@@ -62,6 +64,9 @@ impl Render for SearchPageView {
         let route = &self.route;
         let page = cx.entity();
         let search_state = self.state.read(cx);
+        let session_user_id = self.runtime.session.read(cx).auth_user_id;
+        let favorites_state = self.runtime.favorites.read(cx).clone();
+        let favorite_ready = favorites_state.is_ready_for(session_user_id);
         let current_playing_track_id = self
             .runtime
             .player
@@ -83,6 +88,14 @@ impl Render for SearchPageView {
                 let input = player::QueueTrackInput::from(song);
                 page.update(cx, |this, cx| {
                     player::enqueue_track(&this.runtime, input, false, cx);
+                });
+            })
+        };
+        let on_toggle_favorite: FavoriteSongHandler = {
+            let page = page.clone();
+            Rc::new(move |track_id, cx| {
+                page.update(cx, |this, cx| {
+                    favorites::toggle_track_like(&this.runtime, track_id, cx);
                 });
             })
         };
@@ -112,6 +125,12 @@ impl Render for SearchPageView {
                         },
                     );
                 });
+            })
+        };
+        let on_load_more = {
+            let page = cx.entity();
+            Rc::new(move |cx: &mut nekowg::App| {
+                page.update(cx, |this, cx| this.load_more(cx));
             })
         };
 
@@ -164,14 +183,16 @@ impl Render for SearchPageView {
                 route_type,
                 search_state,
                 current_playing_track_id,
-                on_play_song,
-                on_enqueue_song,
-                on_open_playlist,
-                {
-                    let page = cx.entity();
-                    Rc::new(move |cx: &mut App| {
-                        page.update(cx, |this, cx| this.load_more(cx));
-                    })
+                SearchFavoriteState {
+                    favorites: favorites_state,
+                    ready: favorite_ready,
+                },
+                SearchTypeRenderActions {
+                    on_play_song,
+                    on_enqueue_song,
+                    on_toggle_favorite,
+                    on_open_playlist,
+                    on_load_more,
                 },
             ),
         };
