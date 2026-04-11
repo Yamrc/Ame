@@ -1,7 +1,6 @@
 use aes::Aes128;
-use aes::cipher::BlockEncryptMut;
+use aes::cipher::{BlockModeEncrypt, KeyIvInit, block_padding::NoPadding};
 use base64::Engine;
-use cbc::cipher::KeyIvInit;
 
 const PRESET_KEY: &[u8; 16] = b"0CoJUm6Qyw8W8jud";
 const IV: &[u8; 16] = b"0102030405060708";
@@ -44,10 +43,10 @@ fn aes_cbc_encrypt(data: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
     let mut buf = data.to_vec();
     buf.extend(std::iter::repeat_n(pad_len as u8, pad_len));
 
-    let encryptor = Aes128CbcEnc::new(key.into(), iv.into());
+    let encryptor = Aes128CbcEnc::new_from_slices(key, iv).expect("key and iv lengths are valid");
     let len = buf.len();
     encryptor
-        .encrypt_padded_mut::<aes::cipher::block_padding::NoPadding>(&mut buf, len)
+        .encrypt_padded::<NoPadding>(&mut buf, len)
         .expect("padding is correct");
 
     buf

@@ -1,5 +1,5 @@
 use aes::Aes128;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use md5::{Digest, Md5};
 
 use super::{Error, Result};
@@ -8,10 +8,10 @@ const KEY: &[u8; 16] = b"e82ckenh8dichen8";
 
 pub fn encrypt(url: &str, data: &str) -> String {
     let body = format!(
-        "{}-36cd479b6b5-{}-36cd479b6b5-{:x}",
+        "{}-36cd479b6b5-{}-36cd479b6b5-{}",
         url,
         data,
-        Md5::digest(format!("nobody{}use{}md5forencrypt", url, data))
+        hex::encode(Md5::digest(format!("nobody{}use{}md5forencrypt", url, data)))
     );
 
     let cipher = Aes128::new_from_slice(KEY).expect("key length is valid");
@@ -25,7 +25,7 @@ pub fn encrypt(url: &str, data: &str) -> String {
 
     let mut result = String::with_capacity(total_len * 2);
     for chunk in padded.chunks_exact(16) {
-        let mut block = aes::cipher::generic_array::GenericArray::from([0u8; 16]);
+        let mut block = Array::from([0u8; 16]);
         block.copy_from_slice(chunk);
         cipher.encrypt_block(&mut block);
         for &b in block.iter() {
@@ -41,7 +41,7 @@ pub fn decrypt(data: &str) -> Result<Option<String>> {
 
     let mut result = Vec::with_capacity(bytes.len());
     for chunk in bytes.chunks_exact(16) {
-        let mut block = aes::cipher::generic_array::GenericArray::from([0u8; 16]);
+        let mut block = Array::from([0u8; 16]);
         block.copy_from_slice(chunk);
         cipher.decrypt_block(&mut block);
         result.extend_from_slice(&block);
