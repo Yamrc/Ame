@@ -87,6 +87,12 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
     let on_play_row = actions.on_play.clone();
     let on_toggle_favorite = actions.on_toggle_favorite.clone();
     let row_id: SharedString = format!("track-item-row-{}", props.state_id).into();
+    let transition_id: SharedString = format!(
+        "track-item-row-transition-{}-{}",
+        props.state_id,
+        props.is_playing as u8
+    )
+    .into();
     let base_bg = if props.is_playing {
         rgba(theme::with_alpha(theme::COLOR_PRIMARY, 0x18))
     } else {
@@ -244,7 +250,7 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
                         .child(duration),
                 ),
         )
-        .with_transition(row_id)
+        .with_transition(transition_id)
         .transition_on_hover(
             Duration::from_millis(ROW_HOVER_DURATION_MS),
             Linear,
