@@ -13,6 +13,16 @@ use crate::page::playlist::models::{PlaylistPage, PlaylistTrackRow, SessionLoadK
 
 const PLAYLIST_CACHE_VERSION: u32 = 1;
 
+const fn playlist_cache_policy() -> CachePolicy {
+    CachePolicy {
+        fresh_ttl_ms: 30 * 24 * 60 * 60 * 1000,
+        stale_ttl_ms: None,
+        revalidate_after_ms: 0,
+        serve_stale_while_revalidate: true,
+        max_body_bytes: 4 * 1024 * 1024,
+    }
+}
+
 pub fn ensure_playlist_page_loaded<C: nekowg::AppContext>(
     runtime: &AppRuntime,
     playlist_id: i64,
@@ -56,7 +66,7 @@ pub fn read_playlist_page_cache(
         return Ok(CacheLookup::Miss);
     };
     let key = playlist_cache_key(playlist_id, user_id)?;
-    cache.read_json(CacheClass::Geological, &key, CachePolicy::geological())
+    cache.read_json(CacheClass::Geological, &key, playlist_cache_policy())
 }
 
 pub fn fetch_and_store_playlist_page(
@@ -77,7 +87,7 @@ pub fn fetch_and_store_playlist_page(
     cache.fetch_and_store_json(
         CacheClass::Geological,
         &key,
-        CachePolicy::geological(),
+        playlist_cache_policy(),
         &tags,
         || fetch_playlist_page_payload(playlist_id, cookie),
     )
@@ -97,7 +107,7 @@ pub fn store_playlist_page(
     cache.write_json(
         CacheClass::Geological,
         &key,
-        CachePolicy::geological(),
+        playlist_cache_policy(),
         &tags,
         page,
     )

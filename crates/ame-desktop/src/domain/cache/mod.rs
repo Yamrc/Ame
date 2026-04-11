@@ -117,6 +117,7 @@ impl CachePolicy {
         }
     }
 
+    #[allow(dead_code)]
     pub const fn geological() -> Self {
         Self {
             fresh_ttl_ms: 30 * 24 * 60 * 60 * 1000,
