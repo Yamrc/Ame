@@ -8,8 +8,8 @@ use nekowg::{
     px, rgb,
 };
 
-use crate::component::{button, theme, virtual_list};
 use crate::component::track_item::TrackItemFavoriteState;
+use crate::component::{button, theme, virtual_list};
 use crate::domain::favorites::FavoritesState;
 use crate::domain::player::QueueItem;
 

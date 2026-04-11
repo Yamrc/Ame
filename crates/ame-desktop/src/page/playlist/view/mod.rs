@@ -11,8 +11,8 @@ use crate::app::page::{PageLifecycle, PageRetentionPolicy};
 use crate::app::runtime::AppRuntime;
 use crate::domain::{favorites, player};
 use crate::page::playlist::sections::{
-    FavoriteTrackHandler, PlaylistFavoriteState, PlaylistListRenderCache,
-    PlaylistRenderActions, ReplaceQueueHandler, TrackActionHandler, render_playlist_page,
+    FavoriteTrackHandler, PlaylistFavoriteState, PlaylistListRenderCache, PlaylistRenderActions,
+    ReplaceQueueHandler, TrackActionHandler, render_playlist_page,
 };
 use crate::page::state::freeze_page_state;
 

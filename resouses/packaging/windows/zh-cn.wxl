@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="zh-cn" Codepage="65001">
-  <String Id="ProductLanguage">2052</String>
+<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="zh-cn" Codepage="936">
   <String Id="DowngradeErrorMessage">已安装更高版本的 Ame。</String>
   <String Id="OptionsDialogTitle">安装选项</String>
   <String Id="OptionsDialogDescription">选择可选的安装行为。</String>

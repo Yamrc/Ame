@@ -2,10 +2,10 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Product
-    Id="*"
+    Id="$(var.ProductCode)"
     Name="Ame"
-    Language="!(loc.ProductLanguage)"
-    Codepage="65001"
+    Language="2052"
+    Codepage="936"
     Version="$(var.ProductVersion)"
     Manufacturer="NeoNekos"
     UpgradeCode="A5231D3F-2ED7-4E43-8F87-ECE918F16F58">
@@ -14,6 +14,8 @@
       Compressed="yes"
       InstallScope="perMachine"
       InstallPrivileges="elevated"
+      Languages="2052"
+      SummaryCodepage="936"
       Platform="x64" />
 
     <MajorUpgrade
@@ -21,12 +23,15 @@
       DowngradeErrorMessage="!(loc.DowngradeErrorMessage)" />
 
     <MediaTemplate EmbedCab="yes" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="ADD_START_MENU_SHORTCUT" Value="1" />
     <Property Id="REMOVE_APPDATA" Value="1" />
-    <Property Id="APPDATADIR" Value="[AppDataFolder]Ame" />
+    <Property Id="APPDATADIR" Secure="yes" />
+    <SetProperty Id="APPDATADIR" Value="[AppDataFolder]Ame" Before="CostFinalize">NOT APPDATADIR</SetProperty>
     <UIRef Id="WixUI_InstallDir" />
     <UIRef Id="WixUI_Common" />
+    <UIRef Id="WixUI_ErrorProgressText" />
 
     <UI>
       <Dialog Id="AmeOptionsDlg" Width="370" Height="270" Title="!(loc.OptionsDialogTitle)">
@@ -56,10 +61,10 @@
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="Ame">
-          <Component Id="cmpAmeExe" Guid="*" Win64="yes">
+          <Component Id="cmpAmeExe" Guid="20A28881-6A4E-4DAC-BFC2-B33D3E464BB7" Win64="yes">
             <File Id="filAmeExe" Source="$(var.SourceExe)" KeyPath="yes" />
           </Component>
-          <Component Id="cmpAmeRegistry" Guid="*" Win64="yes">
+          <Component Id="cmpAmeRegistry" Guid="EC3AC082-346A-48E4-A076-C9048B017527" Win64="yes">
             <RegistryKey Root="HKLM" Key="Software\NeoNekos\Ame">
               <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
               <RegistryValue Name="Version" Type="string" Value="$(var.ProductVersion)" />
@@ -69,7 +74,7 @@
       </Directory>
       <Directory Id="ProgramMenuFolder">
         <Directory Id="AmeProgramMenuFolder" Name="Ame">
-          <Component Id="cmpStartMenuShortcut" Guid="*" Win64="yes">
+          <Component Id="cmpStartMenuShortcut" Guid="B635F98E-E7A7-4B5B-B988-FB15CDAF5FC5" Win64="yes">
             <Condition>ADD_START_MENU_SHORTCUT=1</Condition>
             <Shortcut
               Id="AmeStartMenuShortcut"
@@ -89,7 +94,7 @@
         </Directory>
       </Directory>
       <Directory Id="AppDataFolder">
-        <Component Id="cmpAppDataCleanup" Guid="*" Win64="yes">
+        <Component Id="cmpAppDataCleanup" Guid="AE147EC6-AAD2-4252-8D61-65AF2A6FD931" Win64="yes">
           <Condition>REMOVE_APPDATA=1</Condition>
           <RegistryValue
             Root="HKCU"

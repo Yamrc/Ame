@@ -89,8 +89,7 @@ pub fn render(props: TrackItemProps, actions: TrackItemActions) -> AnyElement {
     let row_id: SharedString = format!("track-item-row-{}", props.state_id).into();
     let transition_id: SharedString = format!(
         "track-item-row-transition-{}-{}",
-        props.state_id,
-        props.is_playing as u8
+        props.state_id, props.is_playing as u8
     )
     .into();
     let base_bg = if props.is_playing {

@@ -2,10 +2,10 @@ name: Rust Setup
 description: Install Linux deps, setup Rust toolchain, and cache cargo.
 
 inputs:
-  with-clippy:
-    description: Install clippy component.
+  components:
+    description: Comma-separated Rust components to install.
     required: false
-    default: "false"
+    default: ""
   linux-packages:
     description: Space-separated Linux packages.
     required: false
@@ -21,14 +21,14 @@ runs:
         sudo apt-get update
         sudo apt-get install -y ${{ inputs.linux-packages }}
 
-    - name: step::setup_rust_with_clippy
-      if: inputs.with-clippy == 'true'
+    - name: step::setup_rust_with_components
+      if: inputs.components != ''
       uses: dtolnay/rust-toolchain@stable
       with:
-        components: clippy
+        components: ${{ inputs.components }}
 
     - name: step::setup_rust
-      if: inputs.with-clippy != 'true'
+      if: inputs.components == ''
       uses: dtolnay/rust-toolchain@stable
 
     - name: step::cache_cargo

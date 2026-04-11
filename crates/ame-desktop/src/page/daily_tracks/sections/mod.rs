@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use nekowg::{AnyElement, App, FontWeight, div, prelude::*, px, rgb};
 
-use crate::component::{page, theme};
 use crate::component::track_item::TrackItemFavoriteState;
+use crate::component::{page, theme};
 use crate::domain::favorites::FavoritesState;
 use crate::domain::library::DailyTrackItem;
 use crate::page::playlist::{self, PlaylistTrackRow};

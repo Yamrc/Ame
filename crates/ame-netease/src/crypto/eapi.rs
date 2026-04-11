@@ -11,7 +11,10 @@ pub fn encrypt(url: &str, data: &str) -> String {
         "{}-36cd479b6b5-{}-36cd479b6b5-{}",
         url,
         data,
-        hex::encode(Md5::digest(format!("nobody{}use{}md5forencrypt", url, data)))
+        hex::encode(Md5::digest(format!(
+            "nobody{}use{}md5forencrypt",
+            url, data
+        )))
     );
 
     let cipher = Aes128::new_from_slice(KEY).expect("key length is valid");

@@ -45,10 +45,9 @@ pub fn set_track_like_blocking(track_id: i64, like: bool, cookie: &str) -> Resul
     let cookie = normalize_weapi_cookie(cookie);
     let csrf_token = cookie_value(&parse_cookie_pairs(&cookie), "__csrf").unwrap_or_default();
     let client = netease_client(Some(cookie.as_str()));
-    let response = block_on(client.weapi_request(LikeTrackRequest::new(
-        track_id, like, csrf_token,
-    )))
-        .map_err(|err| err.to_string())?;
+    let response =
+        block_on(client.weapi_request(LikeTrackRequest::new(track_id, like, csrf_token)))
+            .map_err(|err| err.to_string())?;
     if response.code != 200 {
         return Err(format!(
             "favorite request returned unexpected code {}",

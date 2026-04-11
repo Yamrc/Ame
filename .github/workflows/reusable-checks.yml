@@ -1,0 +1,85 @@
+name: Reusable Checks
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Optional git ref to checkout.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  LINUX_PACKAGES: pkg-config libdbus-1-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: step::checkout
+        if: inputs.checkout_ref == ''
+        uses: actions/checkout@v6
+
+      - name: step::checkout_specific_ref
+        if: inputs.checkout_ref != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: step::setup_rust
+        uses: ./.github/actions/rust-setup
+        with:
+          components: rustfmt
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: step::fmt
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: step::checkout
+        if: inputs.checkout_ref == ''
+        uses: actions/checkout@v6
+
+      - name: step::checkout_specific_ref
+        if: inputs.checkout_ref != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: step::setup_rust
+        uses: ./.github/actions/rust-setup
+        with:
+          components: clippy
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: step::clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: step::checkout
+        if: inputs.checkout_ref == ''
+        uses: actions/checkout@v6
+
+      - name: step::checkout_specific_ref
+        if: inputs.checkout_ref != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: step::setup_rust
+        uses: ./.github/actions/rust-setup
+        with:
+          linux-packages: ${{ env.LINUX_PACKAGES }}
+
+      - name: step::test
+        run: cargo test --workspace

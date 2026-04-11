@@ -7,8 +7,8 @@ use nekowg::{
     AnyElement, App, FontWeight, ListSizingBehavior, Pixels, ScrollHandle, div, prelude::*, px, rgb,
 };
 
-use crate::component::{button, page, theme, virtual_list};
 use crate::component::track_item::TrackItemFavoriteState;
+use crate::component::{button, page, theme, virtual_list};
 use crate::domain::favorites::FavoritesState;
 use crate::page::playlist::models::{PlaylistPage, PlaylistTrackRow};
 use crate::page::state::DataState;

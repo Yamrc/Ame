@@ -10,30 +10,12 @@ on:
 permissions:
   contents: read
 
-env:
-  LINUX_PACKAGES: pkg-config libdbus-1-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
-
 jobs:
-  lint:
-    name: Check And Clippy
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: step::checkout
-        uses: actions/checkout@v6
-
-      - name: step::setup_rust
-        uses: ./.github/actions/rust-setup
-        with:
-          with-clippy: "true"
-          linux-packages: ${{ env.LINUX_PACKAGES }}
-
-      - name: step::clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+  checks:
+    uses: ./.github/workflows/reusable-checks.yml
 
   build:
-    needs: lint
+    needs: checks
     uses: ./.github/workflows/reusable-build.yml
     with:
       include_installers: false
-      include_sha1: false

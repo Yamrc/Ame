@@ -13,8 +13,8 @@ on:
         required: false
         type: boolean
         default: false
-      include_sha1:
-        description: Generate SHA1 files for all built artifacts.
+      upload_artifacts:
+        description: Upload built artifacts.
         required: false
         type: boolean
         default: false
@@ -41,18 +41,21 @@ jobs:
           - os: ubuntu-latest
             artifact_suffix: linux-x86_64
             bin_name: ame
+            include_portable: true
             portable_name: ame-linux-x86_64
             installer_name: ame-linux-x86_64.deb
             installer_glob: ame-linux-x86_64.deb
           - os: windows-latest
             artifact_suffix: windows-x86_64
             bin_name: ame.exe
+            include_portable: false
             portable_name: ame-windows-x86_64.exe
-            installer_name: ame-windows-x86_64-en-US.msi
-            installer_glob: ame-windows-x86_64-*.msi
+            installer_name: ame-windows-x86_64.msi
+            installer_glob: ame-windows-x86_64.msi
           - os: macos-latest
             artifact_suffix: macos-arm64
             bin_name: ame
+            include_portable: true
             portable_name: ame-macos-arm64
             installer_name: ame-macos-arm64.pkg
             installer_glob: ame-macos-arm64.pkg
@@ -83,10 +86,15 @@ jobs:
           $version = ((cargo pkgid -p ame).Trim() -replace '.*@', '')
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: step::prepare_portable_package
+      - name: step::prepare_dist_directory
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+      - name: step::prepare_portable_package
+        if: inputs.upload_artifacts && matrix.include_portable
+        shell: pwsh
+        run: |
           Copy-Item "target/release/${{ matrix.bin_name }}" "dist/${{ matrix.portable_name }}"
 
       - name: step::build_DEB_installer
@@ -108,16 +116,29 @@ jobs:
           EOF
           dpkg-deb --build dist/pkgroot "dist/${{ matrix.installer_name }}"
 
-      - name: step::build_MSI_installer
+      - name: step::build_windows_installer
         if: inputs.include_installers && runner.os == 'Windows'
         shell: pwsh
         run: |
+          function New-StableProductCode([string]$version) {
+            $bytes = [System.Security.Cryptography.MD5]::HashData(
+              [System.Text.Encoding]::UTF8.GetBytes("NeoNekos.Ame.WindowsMsi.$version.zh-cn.x64")
+            )
+            return ([Guid]::new($bytes)).ToString().ToUpperInvariant()
+          }
+
           choco install wixtoolset --yes --no-progress
           $sourceExe = (Resolve-Path "target/release/ame.exe").Path
-          $wixobj = "$env:RUNNER_TEMP/ame.wixobj"
-          candle.exe -ext WixUIExtension -ext WixUtilExtension "-dSourceExe=$sourceExe" "-dProductVersion=$env:APP_VERSION" -out "$wixobj" "resouses/packaging/windows/ame.wxs"
-          light.exe -ext WixUIExtension -ext WixUtilExtension -cultures:en-us -loc "resouses/packaging/windows/en-us.wxl" -out "dist/ame-windows-x86_64-en-US.msi" "$wixobj"
-          light.exe -ext WixUIExtension -ext WixUtilExtension -cultures:zh-cn -loc "resouses/packaging/windows/zh-cn.wxl" -out "dist/ame-windows-x86_64-zh-CN.msi" "$wixobj"
+          $licenseText = Get-Content "LICENSE" -Raw
+          $escapedLicense = $licenseText.Replace('\', '\\').Replace('{', '\{').Replace('}', '\}')
+          $licenseBody = ($escapedLicense -split "`r?`n" | ForEach-Object { "$_\par" }) -join "`r`n"
+          $licenseRtf = (Resolve-Path ".").Path + "\dist\MPL-2.0.rtf"
+          $licenseContent = "{\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0 Courier New;}}\viewkind4\uc1\pard\fs18`r`n$licenseBody`r`n}"
+          Set-Content -Path $licenseRtf -Value $licenseContent -Encoding ascii
+          $msiWixobj = "$env:RUNNER_TEMP/ame.msi.wixobj"
+          $productCode = New-StableProductCode $env:APP_VERSION
+          candle.exe -ext WixUIExtension -ext WixUtilExtension "-dSourceExe=$sourceExe" "-dProductCode=$productCode" "-dProductVersion=$env:APP_VERSION" "-dLicenseRtf=$licenseRtf" -out "$msiWixobj" "resouses/packaging/windows/ame.wxs"
+          light.exe -ext WixUIExtension -ext WixUtilExtension -cultures:zh-cn -loc "resouses/packaging/windows/zh-cn.wxl" -out "dist/${{ matrix.installer_name }}" "$msiWixobj"
 
       - name: step::build_PKG_installer
         if: inputs.include_installers && runner.os == 'macOS'
@@ -134,47 +155,16 @@ jobs:
             --install-location / \
             "dist/${{ matrix.installer_name }}"
 
-      - name: step::generate_SHA1
-        if: inputs.include_sha1
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path dist -File | Where-Object { $_.Name -notlike "*.sha1" } | ForEach-Object {
-            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA1).Hash.ToLower()
-            "$hash  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha1" -Encoding ascii
-          }
-
       - name: step::upload_portable_artifact
-        if: ${{ !inputs.include_installers && !inputs.include_sha1 }}
+        if: ${{ inputs.upload_artifacts && !inputs.include_installers && matrix.include_portable }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
           path: dist/${{ matrix.portable_name }}
           if-no-files-found: error
 
-      - name: step::upload_portable_artifact_with_SHA1
-        if: ${{ !inputs.include_installers && inputs.include_sha1 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
-          path: |
-            dist/${{ matrix.portable_name }}
-            dist/${{ matrix.portable_name }}.sha1
-          if-no-files-found: error
-
       - name: step::upload_full_artifact_set
-        if: ${{ inputs.include_installers && inputs.include_sha1 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
-          path: |
-            dist/${{ matrix.portable_name }}
-            dist/${{ matrix.portable_name }}.sha1
-            dist/${{ matrix.installer_glob }}
-            dist/*.sha1
-          if-no-files-found: error
-
-      - name: step::upload_full_artifact_set_without_SHA1
-        if: ${{ inputs.include_installers && !inputs.include_sha1 }}
+        if: ${{ inputs.upload_artifacts && inputs.include_installers && matrix.include_portable }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
@@ -183,3 +173,10 @@ jobs:
             dist/${{ matrix.installer_glob }}
           if-no-files-found: error
 
+      - name: step::upload_installer_only_artifact
+        if: ${{ inputs.upload_artifacts && inputs.include_installers && !matrix.include_portable }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_prefix }}-${{ matrix.artifact_suffix }}
+          path: dist/${{ matrix.installer_glob }}
+          if-no-files-found: error

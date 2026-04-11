@@ -9,8 +9,8 @@ use nekowg::{AnyElement, App, SharedString, px};
 use crate::component::{
     cover_card::{self, ArtistCoverCardProps, CoverCardActions},
     playlist_card::{self, PlaylistCardActions, PlaylistCardProps},
-    track_item::TrackItemFavoriteState,
     short_track_item::{self, ShortTrackItemActions, ShortTrackItemProps},
+    track_item::TrackItemFavoriteState,
     track_item::{self, TrackItemActions, TrackItemProps},
 };
 use crate::domain::favorites::FavoritesState;
