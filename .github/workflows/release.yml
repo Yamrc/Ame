@@ -113,7 +113,7 @@ jobs:
                   "on_property": "title"
                 }
               ],
-              "commit_template": "- #{{TITLE}}",
+              "commit_template": "- #{{TITLE}} #{{MERGE_SHA}} @#{{AUTHOR}}",
               "sort": {
                 "order": "DESC",
                 "on_property": "mergedAt"
