@@ -51,7 +51,7 @@ dashmap = "6.1.0"
 parking_lot = "0.12.5"
 smol = "2.0.2"
 num-bigint = "0.4.6"
-rand = "0.10.0"
+rand = "0.10.1"
 reqwest = "0.13.1"
 rsa = "0.9.10"
 serde = { version = "1.0.228", features = ["derive"] }
