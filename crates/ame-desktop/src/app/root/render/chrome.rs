@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
 use nekowg::{AnyElement, App, Context, Window, div, prelude::*, px};
+#[cfg(target_os = "windows")]
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::WindowsAndMessaging::{SW_MAXIMIZE, SW_RESTORE, ShowWindowAsync};
 
 use crate::app::route::AppRoute;
 use crate::app::router;
@@ -12,6 +16,34 @@ use crate::component::{
 use crate::domain::{favorites, player};
 
 use super::super::RootView;
+
+#[cfg(target_os = "windows")]
+fn toggle_max_restore_window(window: &mut Window) {
+    let Ok(handle) = HasWindowHandle::window_handle(window) else {
+        window.zoom_window();
+        return;
+    };
+
+    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+        window.zoom_window();
+        return;
+    };
+
+    let command = if window.is_maximized() {
+        SW_RESTORE
+    } else {
+        SW_MAXIMIZE
+    };
+
+    unsafe {
+        ShowWindowAsync(handle.hwnd.get() as *mut core::ffi::c_void, command);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn toggle_max_restore_window(window: &mut Window) {
+    window.zoom_window();
+}
 
 impl RootView {
     pub(super) fn render_top_chrome(
@@ -30,7 +62,7 @@ impl RootView {
             },
             &TitleBarActions {
                 on_min: Arc::new(|window, _| window.minimize_window()),
-                on_toggle_max_restore: Arc::new(|window, _| window.zoom_window()),
+                on_toggle_max_restore: Arc::new(|window, _| toggle_max_restore_window(window)),
                 on_close: Arc::new(move |window, cx| {
                     close_root.update(cx, |this, cx| this.request_window_close(window, cx));
                 }),

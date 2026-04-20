@@ -17,6 +17,7 @@ pub struct TitleBarModel {
 #[derive(Clone)]
 pub struct TitleBarActions {
     pub on_min: WindowAction,
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     pub on_toggle_max_restore: WindowAction,
     pub on_close: WindowAction,
 }
@@ -54,7 +55,7 @@ pub fn title_bar(title: impl Into<SharedString>, controls: AnyElement) -> Div {
         .child(div().flex().items_center().gap_1().child(controls))
 }
 
-pub fn window_control_button(area: WindowControlArea, icon_name: IconName, is_close: bool) -> Div {
+pub fn window_control_button(_area: WindowControlArea, icon_name: IconName, is_close: bool) -> Div {
     let icon_size = match icon_name {
         IconName::WindowRestore => 15.,
         _ => 14.,
@@ -63,7 +64,6 @@ pub fn window_control_button(area: WindowControlArea, icon_name: IconName, is_cl
     let button = div()
         .w(px(46.))
         .h(px(page_scaffold::TITLE_BAR_HEIGHT_PX))
-        .window_control_area(area)
         .cursor_pointer()
         .flex()
         .items_center()

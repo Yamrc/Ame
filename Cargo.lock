@@ -91,7 +91,7 @@ dependencies = [
 
 [[package]]
 name = "ame"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ame-audio",
  "ame-core",
@@ -107,6 +107,7 @@ dependencies = [
  "parking_lot",
  "qrcode",
  "rand 0.10.1",
+ "raw-window-handle",
  "reqwest",
  "rust-embed",
  "serde",
@@ -114,11 +115,12 @@ dependencies = [
  "smol",
  "tokio",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "ame-audio"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "ame-core",
  "audioadapter-buffers",
@@ -133,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "ame-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "anyhow",
  "blake3",
@@ -149,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "ame-netease"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "aes 0.9.0",
  "base64",

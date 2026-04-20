@@ -32,3 +32,7 @@ qrcode.workspace = true
 rand.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+raw-window-handle = "0.6.2"
+windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
