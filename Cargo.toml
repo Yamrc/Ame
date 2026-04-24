@@ -43,7 +43,7 @@ keyring = { version = "3.6.3", features = [
 ] }
 symphonia = { version = "0.5.5", default-features = false }
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"]}
-redb = "4.0.0"
+redb = "4.1.0"
 md-5 = "0.11.0"
 nekowg = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2"}
 nekowg_platform = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2" }
@@ -66,4 +66,4 @@ tracing-subscriber = { version = "0.3.22", features = [
     "local-time",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.52.0", features = ["full"] }
+tokio = { version = "1.52.1", features = ["full"] }
