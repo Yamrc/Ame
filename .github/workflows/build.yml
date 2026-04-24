@@ -13,9 +13,11 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/reusable-checks.yml
+    secrets: inherit
 
   build:
     needs: checks
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
     with:
       include_installers: false

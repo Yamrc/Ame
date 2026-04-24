@@ -73,13 +73,13 @@ impl HomePageView {
         if auth::has_user_token(&self.runtime, cx) {
             router::navigate_route(cx, AppRoute::DailyTracks);
         } else {
-            router::navigate_route(cx, AppRoute::Login);
+            router::navigate_route(cx, AppRoute::Settings);
         }
     }
 
     fn play_daily(&mut self, track_id: Option<i64>, cx: &mut Context<Self>) {
         if !auth::has_user_token(&self.runtime, cx) {
-            router::navigate_route(cx, AppRoute::Login);
+            router::navigate_route(cx, AppRoute::Settings);
             return;
         }
 
@@ -99,7 +99,7 @@ impl HomePageView {
 
     fn open_fm(&mut self, track: Option<library_actions::FmTrackItem>, cx: &mut Context<Self>) {
         if !auth::has_user_token(&self.runtime, cx) {
-            router::navigate_route(cx, AppRoute::Login);
+            router::navigate_route(cx, AppRoute::Settings);
             return;
         }
         if let Some(track) = track {

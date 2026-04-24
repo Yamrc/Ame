@@ -28,7 +28,6 @@ impl AppRoute {
             ["daily", "songs"] => Self::DailyTracks,
             ["next"] => Self::Queue,
             ["settings"] => Self::Settings,
-            ["login"] => Self::Login,
             _ => unknown_route(&normalized),
         }
     }
@@ -52,7 +51,6 @@ impl AppRoute {
             Self::DailyTracks => "/daily/songs".into(),
             Self::Queue => "/next".into(),
             Self::Settings => "/settings".into(),
-            Self::Login => "/login".into(),
             Self::Unknown { path } => path.clone(),
         }
     }
@@ -103,6 +101,7 @@ mod tests {
         assert_eq!(AppRoute::parse("/"), AppRoute::Home);
         assert_eq!(AppRoute::parse("/explore"), AppRoute::Explore);
         assert_eq!(AppRoute::parse("/library"), AppRoute::Library);
+        assert_eq!(AppRoute::parse("/settings"), AppRoute::Settings);
         assert_eq!(
             AppRoute::parse("/search/yoasobi"),
             AppRoute::SearchOverview {
@@ -126,6 +125,10 @@ mod tests {
     fn unknown_routes_are_explicit() {
         assert!(matches!(
             AppRoute::parse("/playlist/not-a-number"),
+            AppRoute::Unknown { .. }
+        ));
+        assert!(matches!(
+            AppRoute::parse("/login"),
             AppRoute::Unknown { .. }
         ));
         assert!(matches!(

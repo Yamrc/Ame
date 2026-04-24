@@ -2,9 +2,9 @@ use ame_audio::{AudioCommand, SourceSpec};
 use nekowg::Context;
 
 use crate::app::runtime::AppRuntime;
-use crate::domain::player;
 use crate::domain::session as auth;
 use crate::domain::session::AuthLevel;
+use crate::domain::{lastfm, player};
 
 use super::super::bridge::with_audio_bridge_or_error;
 use super::super::persist::persist_player_runtime;
@@ -36,7 +36,7 @@ fn prepare_track_source<T>(
     Some(source_url)
 }
 
-pub(in crate::domain::player::workflow) fn start_playback_at<T>(
+pub(in crate::domain::player::workflow) fn start_playback_at<T: 'static>(
     runtime: &AppRuntime,
     queue_index: usize,
     start_ms: u64,
@@ -76,6 +76,7 @@ pub(in crate::domain::player::workflow) fn start_playback_at<T>(
         player.is_playing = autoplay;
         cx.notify();
     });
+    lastfm::handle_playback_started(runtime, &item, cx);
     persist_player_runtime(runtime, cx);
     true
 }

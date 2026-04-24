@@ -2,17 +2,17 @@ use ame_audio::AudioCommand;
 use nekowg::Context;
 
 use crate::app::runtime::AppRuntime;
-use crate::domain::player;
 use crate::domain::player::QueueItem;
 use crate::domain::session as auth;
 use crate::domain::session::AuthLevel;
+use crate::domain::{lastfm, player};
 
 use super::bridge::with_audio_bridge;
 use super::persist::{persist_player_progress, persist_player_runtime};
 use super::playback::start_playback_at;
 use super::types::QueueTrackInput;
 
-pub fn enqueue_track<T>(
+pub fn enqueue_track<T: 'static>(
     runtime: &AppRuntime,
     track: QueueTrackInput,
     autoplay: bool,
@@ -86,7 +86,7 @@ pub fn enqueue_track<T>(
     }
 }
 
-pub fn replace_queue<T>(
+pub fn replace_queue<T: 'static>(
     runtime: &AppRuntime,
     tracks: Vec<QueueTrackInput>,
     start_index: usize,
@@ -128,7 +128,7 @@ pub fn replace_queue<T>(
     }
 }
 
-pub fn play_queue_item<T>(runtime: &AppRuntime, track_id: i64, cx: &mut Context<T>) {
+pub fn play_queue_item<T: 'static>(runtime: &AppRuntime, track_id: i64, cx: &mut Context<T>) {
     let Some(index) = runtime.player.read(cx).index_of_id(track_id) else {
         return;
     };
@@ -145,7 +145,8 @@ pub fn remove_queue_item<T>(runtime: &AppRuntime, track_id: i64, cx: &mut Contex
     persist_player_runtime(runtime, cx);
 }
 
-pub fn clear_queue<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub fn clear_queue<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
+    lastfm::finalize_playback(runtime, cx);
     runtime.player.update(cx, |player, cx| {
         player.clear();
         player.is_playing = false;

@@ -49,7 +49,6 @@ pub enum AppRoute {
     DailyTracks,
     Queue,
     Settings,
-    Login,
     Unknown {
         path: SharedString,
     },

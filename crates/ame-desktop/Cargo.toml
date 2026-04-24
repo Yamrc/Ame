@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 description.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "ame"
@@ -32,6 +33,9 @@ qrcode.workspace = true
 rand.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+md-5.workspace = true
+tiny_http.workspace = true
+webbrowser.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle = "0.6.2"

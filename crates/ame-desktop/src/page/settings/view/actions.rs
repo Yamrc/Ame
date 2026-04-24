@@ -1,5 +1,6 @@
 use nekowg::Context;
 
+use crate::domain::lastfm;
 use crate::domain::settings::{CloseBehavior, HomeArtistLanguage};
 use crate::domain::{settings, shell};
 
@@ -16,5 +17,17 @@ impl SettingsPageView {
         cx: &mut Context<Self>,
     ) {
         settings::set_home_artist_language(&self.runtime, value, cx);
+    }
+
+    pub(super) fn refresh_login(&mut self, cx: &mut Context<Self>) {
+        crate::domain::session::refresh_login_token(&self.runtime, cx);
+    }
+
+    pub(super) fn connect_lastfm(&mut self, cx: &mut Context<Self>) {
+        lastfm::connect(&self.runtime, cx);
+    }
+
+    pub(super) fn disconnect_lastfm(&mut self, cx: &mut Context<Self>) {
+        lastfm::disconnect(&self.runtime, cx);
     }
 }

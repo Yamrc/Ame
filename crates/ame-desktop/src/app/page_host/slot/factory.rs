@@ -4,7 +4,7 @@ use crate::app::page_host::PageHostView;
 use crate::app::page_host::key::PageKey;
 use crate::app::route::AppRoute;
 use crate::app::runtime::AppRuntime;
-use crate::page::{daily_tracks, discover, home, library, login, next, playlist, search, settings};
+use crate::page::{daily_tracks, discover, home, library, next, playlist, search, settings};
 
 use super::PageSlot;
 use super::unknown::UnknownPageView;
@@ -69,10 +69,6 @@ pub(in crate::app::page_host) fn create_page(
             PageSlot::Settings(
                 cx.new(move |cx| settings::SettingsPageView::new(runtime.clone(), cx)),
             )
-        }
-        PageKey::Login => {
-            let runtime = runtime.clone();
-            PageSlot::Login(cx.new(move |cx| login::LoginPageView::new(runtime.clone(), cx)))
         }
         PageKey::Unknown(_) => {
             let path = match route {

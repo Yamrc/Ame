@@ -8,7 +8,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 authors = ["Yamrc <yamrci@outlook.com>"]
 description = "Third-party ncm client."
@@ -67,3 +67,5 @@ tracing-subscriber = { version = "0.3.22", features = [
 ] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.1", features = ["full"] }
+tiny_http = "0.12.0"
+webbrowser = "1.2.1"

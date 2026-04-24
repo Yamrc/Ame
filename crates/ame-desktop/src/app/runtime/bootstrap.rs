@@ -9,6 +9,7 @@ use crate::app::env::AppEnv;
 use crate::app::state::AppEntity;
 use crate::domain::cache::CacheService;
 use crate::domain::favorites::FavoritesState;
+use crate::domain::lastfm::{LastFmBuildConfig, LastFmSession, LastFmState, load_scrobble_queue};
 use crate::domain::player::{PlaybackMode, PlayerEntity, QueueItem};
 use crate::domain::session::{PersistedSessionIdentity, SessionState};
 use crate::domain::settings::{CloseBehavior, HomeArtistLanguage};
@@ -213,6 +214,29 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
         error: None,
         close_behavior,
     };
+    let mut lastfm_state = LastFmState {
+        configured: LastFmBuildConfig::from_env().is_configured(),
+        ..LastFmState::default()
+    };
+    match services.credential_store.load_lastfm_session_key() {
+        Ok(Some(session_key)) => {
+            lastfm_state.session = Some(LastFmSession {
+                session_key,
+                user_name: None,
+            });
+        }
+        Ok(None) => {}
+        Err(err) => push_message(
+            &mut startup_error,
+            format!("Failed to read Last.fm session key: {err}"),
+        ),
+    }
+    if let Some(state_store) = services.state_store.as_ref() {
+        match load_scrobble_queue(state_store) {
+            Ok(queue) => lastfm_state.scrobble_queue = queue,
+            Err(err) => push_message(&mut startup_error, err),
+        }
+    }
     if let Some(err) = startup_error {
         push_message(&mut shell_state.error, err);
     }
@@ -227,6 +251,7 @@ pub(super) fn bootstrap_runtime<T>(cx: &mut Context<T>) -> RuntimeBootstrap {
             home_artist_language,
         }),
         favorites: cx.new(|_| FavoritesState::default()),
+        lastfm: cx.new(move |_| lastfm_state.clone()),
         player: cx.new(move |_| player_state.clone()),
         shell: cx.new(move |_| shell_state.clone()),
         session: cx.new(move |_| session_state.clone()),

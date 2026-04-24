@@ -105,7 +105,7 @@ impl RootView {
                 on_profile: {
                     let root_entity = root_entity.clone();
                     Arc::new(move |cx| {
-                        root_entity.update(cx, |this, cx| this.navigate_to(AppRoute::Login, cx));
+                        root_entity.update(cx, |this, cx| this.navigate_to(AppRoute::Settings, cx));
                     })
                 },
             },

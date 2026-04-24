@@ -23,12 +23,19 @@ on:
         required: false
         type: string
         default: ame
+    secrets:
+      AME_LASTFM_API_KEY:
+        required: false
+      AME_LASTFM_SHARED_SECRET:
+        required: false
 
 permissions:
   contents: read
 
 env:
   LINUX_PACKAGES: pkg-config libdbus-1-dev libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
+  AME_LASTFM_API_KEY: ${{ secrets.AME_LASTFM_API_KEY }}
+  AME_LASTFM_SHARED_SECRET: ${{ secrets.AME_LASTFM_SHARED_SECRET }}
 
 jobs:
   build:

@@ -5,9 +5,9 @@ use nekowg::{Context, Image};
 
 use crate::domain::session as auth;
 
-use super::LoginPageView;
+use super::SettingsPageView;
 
-impl LoginPageView {
+impl SettingsPageView {
     pub(super) fn generate_login_qr(&mut self, cx: &mut Context<Self>) {
         let Some(cookie) = auth::ensure_auth_cookie(&self.runtime, auth::AuthLevel::Guest, cx)
         else {
@@ -53,14 +53,14 @@ impl LoginPageView {
             }
         };
 
-        self.state.update(cx, |login, cx| {
-            login.qr_key = Some(key);
-            login.qr_url = Some(qr_url);
-            login.qr_image = image_data;
-            login.qr_status = Some("801 waiting for scan".to_string());
-            login.qr_polling = true;
-            login.qr_poll_started_at = Some(Instant::now());
-            login.qr_last_polled_at = None;
+        self.state.update(cx, |state, cx| {
+            state.qr_key = Some(key);
+            state.qr_url = Some(qr_url);
+            state.qr_image = image_data;
+            state.qr_status = Some("801 waiting for scan".to_string());
+            state.qr_polling = true;
+            state.qr_poll_started_at = Some(Instant::now());
+            state.qr_last_polled_at = None;
             cx.notify();
         });
 
@@ -68,10 +68,7 @@ impl LoginPageView {
     }
 
     fn start_qr_polling(&mut self, cx: &mut Context<Self>) {
-        if self.polling_task_active {
-            return;
-        }
-        if !self.state.read(cx).qr_polling {
+        if self.polling_task_active || !self.state.read(cx).qr_polling {
             return;
         }
 
@@ -81,8 +78,7 @@ impl LoginPageView {
             loop {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 let updated = page.update(cx, |this, cx| {
-                    let now = Instant::now();
-                    let keep = this.tick_qr_poll(now, cx);
+                    let keep = this.tick_qr_poll(Instant::now(), cx);
                     if !keep {
                         this.polling_task_active = false;
                     }
@@ -98,53 +94,55 @@ impl LoginPageView {
     }
 
     pub(super) fn stop_login_qr_polling(&mut self, cx: &mut Context<Self>) {
-        self.state.update(cx, |login, cx| {
-            login.qr_polling = false;
-            login.qr_status = Some("Polling stopped".to_string());
+        self.state.update(cx, |state, cx| {
+            state.qr_polling = false;
+            if state.qr_status.is_none() {
+                state.qr_status = Some("未开始".to_string());
+            }
             cx.notify();
         });
     }
 
     fn tick_qr_poll(&mut self, now: Instant, cx: &mut Context<Self>) -> bool {
-        let login = self.state.read(cx).clone();
-        if !login.qr_polling {
+        let state = self.state.read(cx).clone();
+        if !state.qr_polling {
             return false;
         }
 
-        if let Some(started_at) = login.qr_poll_started_at
+        if let Some(started_at) = state.qr_poll_started_at
             && now.duration_since(started_at) >= Duration::from_secs(120)
         {
-            self.state.update(cx, |login, cx| {
-                login.qr_polling = false;
-                login.qr_status = Some("800 QR code expired".to_string());
+            self.state.update(cx, |state, cx| {
+                state.qr_polling = false;
+                state.qr_status = Some("800 QR code expired".to_string());
                 cx.notify();
             });
             return false;
         }
 
-        if let Some(last) = login.qr_last_polled_at
-            && now.duration_since(last) < Duration::from_secs(2)
+        if let Some(last_polled_at) = state.qr_last_polled_at
+            && now.duration_since(last_polled_at) < Duration::from_secs(2)
         {
             return true;
         }
 
-        let Some(key) = login.qr_key.clone() else {
-            self.state.update(cx, |login, cx| {
-                login.qr_polling = false;
-                login.qr_status = Some("QR key is missing".to_string());
+        let Some(key) = state.qr_key.clone() else {
+            self.state.update(cx, |state, cx| {
+                state.qr_polling = false;
+                state.qr_status = Some("QR key is missing".to_string());
                 cx.notify();
             });
             return false;
         };
 
-        self.state.update(cx, |login, _| {
-            login.qr_last_polled_at = Some(now);
+        self.state.update(cx, |state, _| {
+            state.qr_last_polled_at = Some(now);
         });
 
         let Some(cookie) = auth::ensure_auth_cookie(&self.runtime, auth::AuthLevel::Guest, cx)
         else {
-            self.state.update(cx, |login, cx| {
-                login.qr_polling = false;
+            self.state.update(cx, |state, cx| {
+                state.qr_polling = false;
                 cx.notify();
             });
             return false;
@@ -155,36 +153,36 @@ impl LoginPageView {
                 let code = response.body.code;
                 match code {
                     800 => {
-                        self.state.update(cx, |login, cx| {
-                            login.qr_polling = false;
-                            login.qr_status = Some("800 QR code expired".to_string());
+                        self.state.update(cx, |state, cx| {
+                            state.qr_polling = false;
+                            state.qr_status = Some("800 QR code expired".to_string());
                             cx.notify();
                         });
                     }
                     801 => {
-                        self.state.update(cx, |login, cx| {
-                            login.qr_status = Some("801 waiting for scan".to_string());
+                        self.state.update(cx, |state, cx| {
+                            state.qr_status = Some("801 waiting for scan".to_string());
                             cx.notify();
                         });
                     }
                     802 => {
-                        self.state.update(cx, |login, cx| {
-                            login.qr_status = Some("802 waiting for confirmation".to_string());
+                        self.state.update(cx, |state, cx| {
+                            state.qr_status = Some("802 waiting for confirmation".to_string());
                             cx.notify();
                         });
                     }
                     803 => {
-                        self.state.update(cx, |login, cx| {
-                            login.qr_polling = false;
-                            login.qr_status = Some("803 login succeeded".to_string());
+                        self.state.update(cx, |state, cx| {
+                            state.qr_polling = false;
+                            state.qr_status = Some("803 login succeeded".to_string());
                             cx.notify();
                         });
                         auth::merge_auth_cookies(&self.runtime, &response.set_cookie, cx);
                         auth::refresh_login_summary(&self.runtime, cx);
                     }
                     value => {
-                        self.state.update(cx, |login, cx| {
-                            login.qr_status = Some(format!("{value} unknown login status"));
+                        self.state.update(cx, |state, cx| {
+                            state.qr_status = Some(format!("{value} unknown login status"));
                             cx.notify();
                         });
                     }

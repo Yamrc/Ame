@@ -4,7 +4,7 @@ use std::time::Instant;
 use nekowg::Image;
 
 #[derive(Debug, Clone, Default)]
-pub struct LoginPageState {
+pub struct SettingsPageState {
     pub qr_key: Option<String>,
     pub qr_url: Option<String>,
     pub qr_image: Option<Arc<Image>>,

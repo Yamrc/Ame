@@ -16,7 +16,6 @@ impl PageSlot {
             Self::Next(view) => view.clone().into_any_element(),
             Self::Playlist(view) => view.clone().into_any_element(),
             Self::Settings(view) => view.clone().into_any_element(),
-            Self::Login(view) => view.clone().into_any_element(),
             Self::Unknown(view) => view.clone().into_any_element(),
         }
     }
@@ -31,7 +30,6 @@ impl PageSlot {
             Self::Next(view) => view.update(cx, |this, cx| this.on_activate(cx)),
             Self::Playlist(view) => view.update(cx, |this, cx| this.on_activate(cx)),
             Self::Settings(view) => view.update(cx, |this, cx| this.on_activate(cx)),
-            Self::Login(view) => view.update(cx, |this, cx| this.on_activate(cx)),
             Self::Unknown(view) => view.update(cx, |this, cx| this.on_activate(cx)),
         }
     }
@@ -49,7 +47,6 @@ impl PageSlot {
             Self::Next(view) => view.update(cx, |this, _| this.snapshot_policy()),
             Self::Playlist(view) => view.update(cx, |this, _| this.snapshot_policy()),
             Self::Settings(view) => view.update(cx, |this, _| this.snapshot_policy()),
-            Self::Login(view) => view.update(cx, |this, _| this.snapshot_policy()),
             Self::Unknown(view) => view.update(cx, |this, _| this.snapshot_policy()),
         }
     }
@@ -67,7 +64,6 @@ impl PageSlot {
             Self::Next(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
             Self::Playlist(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
             Self::Settings(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
-            Self::Login(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
             Self::Unknown(view) => view.update(cx, |this, cx| this.capture_snapshot(cx)),
         }
     }
@@ -88,7 +84,6 @@ impl PageSlot {
             Self::Next(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
             Self::Playlist(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
             Self::Settings(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
-            Self::Login(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
             Self::Unknown(view) => view.update(cx, |this, cx| this.restore_snapshot(snapshot, cx)),
         };
         if let Err(err) = result {
@@ -106,7 +101,6 @@ impl PageSlot {
             Self::Next(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
             Self::Playlist(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
             Self::Settings(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
-            Self::Login(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
             Self::Unknown(view) => view.update(cx, |this, cx| this.release_view_resources(cx)),
         }
     }
@@ -121,7 +115,6 @@ impl PageSlot {
             Self::Next(view) => view.update(cx, |this, cx| this.on_destroy(cx)),
             Self::Playlist(view) => view.update(cx, |this, cx| this.on_destroy(cx)),
             Self::Settings(view) => view.update(cx, |this, cx| this.on_destroy(cx)),
-            Self::Login(view) => view.update(cx, |this, cx| this.on_destroy(cx)),
             Self::Unknown(view) => view.update(cx, |this, cx| this.on_destroy(cx)),
         }
     }

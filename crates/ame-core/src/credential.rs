@@ -8,6 +8,7 @@ const AUTH_MUSIC_U_KEY: &str = "netease_auth_music_u";
 const AUTH_MUSIC_A_KEY: &str = "netease_auth_music_a";
 const AUTH_CSRF_KEY: &str = "netease_auth_csrf";
 const AUTH_MUSIC_R_T_KEY: &str = "netease_auth_music_r_t";
+const LASTFM_SESSION_KEY: &str = "lastfm_session_key";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthBundle {
@@ -49,6 +50,18 @@ impl CredentialStore {
         self.delete_secret(AUTH_CSRF_KEY)?;
         self.delete_secret(AUTH_MUSIC_R_T_KEY)?;
         Ok(())
+    }
+
+    pub fn save_lastfm_session_key(&self, session_key: &str) -> Result<()> {
+        self.save_secret(LASTFM_SESSION_KEY, session_key)
+    }
+
+    pub fn load_lastfm_session_key(&self) -> Result<Option<String>> {
+        self.load_secret(LASTFM_SESSION_KEY)
+    }
+
+    pub fn delete_lastfm_session_key(&self) -> Result<()> {
+        self.delete_secret(LASTFM_SESSION_KEY)
     }
 
     fn save_optional_secret(&self, key: &str, value: Option<&str>) -> Result<()> {

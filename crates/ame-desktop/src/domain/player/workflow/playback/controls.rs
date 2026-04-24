@@ -2,6 +2,7 @@ use ame_audio::{AudioCommand, AudioError, SeekTarget};
 use nekowg::Context;
 
 use crate::app::runtime::AppRuntime;
+use crate::domain::lastfm;
 use crate::domain::session as auth;
 
 use super::super::bridge::{
@@ -64,7 +65,7 @@ pub fn cycle_play_mode<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     persist_player_runtime(runtime, cx);
 }
 
-pub fn toggle_playback<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub fn toggle_playback<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let is_playing = runtime.player.read(cx).is_playing;
     if is_playing {
         match with_audio_bridge(runtime, |audio| audio.send(AudioCommand::Pause)) {
@@ -131,7 +132,7 @@ pub fn toggle_playback<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     play_current(runtime, cx);
 }
 
-pub fn play_previous<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub fn play_previous<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let mut target = None;
     runtime.player.update(cx, |player, _| {
         target = player.prev_index();
@@ -143,7 +144,7 @@ pub fn play_previous<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     }
 }
 
-pub fn play_next<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub fn play_next<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let mut target = None;
     runtime.player.update(cx, |player, _| {
         target = player.next_index();
@@ -155,7 +156,7 @@ pub fn play_next<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     }
 }
 
-pub(super) fn play_current<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub(super) fn play_current<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let player = runtime.player.read(cx).clone();
     let Some(current_index) = player.current_index else {
         return;
@@ -163,7 +164,7 @@ pub(super) fn play_current<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     start_playback_at(runtime, current_index, player.position_ms, true, cx);
 }
 
-pub fn sync_audio_bridge<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub fn sync_audio_bridge<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let mut ended = false;
     let mut forbidden = false;
     let mut last_error: Option<String> = None;
@@ -211,7 +212,8 @@ pub fn sync_audio_bridge<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
     }
 }
 
-pub fn prepare_app_exit<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
+pub fn prepare_app_exit<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
+    lastfm::finalize_playback(runtime, cx);
     persist_player_settings(runtime, cx);
     persist_player_runtime(runtime, cx);
     persist_player_progress(runtime, cx);

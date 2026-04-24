@@ -11,7 +11,6 @@ pub(super) enum PageKey {
     DailyTracks,
     Queue,
     Settings,
-    Login,
     Unknown(String),
 }
 
@@ -34,7 +33,6 @@ impl PageKey {
             AppRoute::DailyTracks => Self::DailyTracks,
             AppRoute::Queue => Self::Queue,
             AppRoute::Settings => Self::Settings,
-            AppRoute::Login => Self::Login,
             AppRoute::Unknown { path } => Self::Unknown(path.as_ref().to_string()),
         }
     }
@@ -53,7 +51,6 @@ mod tests {
         assert_eq!(PageKey::from_route(&AppRoute::Library), PageKey::Library);
         assert_eq!(PageKey::from_route(&AppRoute::Queue), PageKey::Queue);
         assert_eq!(PageKey::from_route(&AppRoute::Settings), PageKey::Settings);
-        assert_eq!(PageKey::from_route(&AppRoute::Login), PageKey::Login);
     }
 
     #[test]

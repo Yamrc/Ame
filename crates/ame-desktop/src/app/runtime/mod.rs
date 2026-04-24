@@ -14,14 +14,15 @@ use crate::app::env::AppEnv;
 use crate::app::state::AppEntity;
 use crate::domain::cache::CacheService;
 use crate::domain::favorites::FavoritesState;
+use crate::domain::lastfm::LastFmState;
 use crate::domain::player::PlayerEntity;
 use crate::domain::session::SessionState;
 use crate::domain::shell::ShellState;
 
 pub use keys::{
-    KEY_HOME_ARTIST_LANGUAGE, KEY_PLAYER_CURRENT_INDEX, KEY_PLAYER_DURATION_MS, KEY_PLAYER_MODE,
-    KEY_PLAYER_POSITION_MS, KEY_PLAYER_QUEUE, KEY_PLAYER_VOLUME, KEY_PLAYER_WAS_PLAYING,
-    KEY_SESSION_IDENTITY, KEY_WINDOW_CLOSE_BEHAVIOR,
+    KEY_HOME_ARTIST_LANGUAGE, KEY_LASTFM_SCROBBLE_QUEUE, KEY_PLAYER_CURRENT_INDEX,
+    KEY_PLAYER_DURATION_MS, KEY_PLAYER_MODE, KEY_PLAYER_POSITION_MS, KEY_PLAYER_QUEUE,
+    KEY_PLAYER_VOLUME, KEY_PLAYER_WAS_PLAYING, KEY_SESSION_IDENTITY, KEY_WINDOW_CLOSE_BEHAVIOR,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -51,6 +52,7 @@ pub struct AppRuntime {
     pub services: AppServices,
     pub app: Entity<AppEntity>,
     pub favorites: Entity<FavoritesState>,
+    pub lastfm: Entity<LastFmState>,
     pub player: Entity<PlayerEntity>,
     pub shell: Entity<ShellState>,
     pub session: Entity<SessionState>,

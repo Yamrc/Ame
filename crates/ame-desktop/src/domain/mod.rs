@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod favorites;
+pub mod lastfm;
 pub mod library;
 pub mod player;
 pub mod runtime;

@@ -9,7 +9,7 @@ use crate::component::{
     slider::{SliderEvent, SliderState},
 };
 use crate::domain::session as auth;
-use crate::domain::{favorites, player};
+use crate::domain::{favorites, lastfm, player};
 
 use super::RootView;
 
@@ -80,6 +80,7 @@ impl RootView {
             auth::refresh_login_summary(&self.runtime, cx);
         }
         favorites::sync_session(&self.runtime, cx);
+        lastfm::prime_session(&self.runtime, cx);
     }
 
     pub(super) fn spawn_runtime_tick(&mut self, tick_ms: u64, cx: &mut Context<Self>) {
@@ -99,6 +100,7 @@ impl RootView {
                         now,
                         cx,
                     );
+                    lastfm::tick(&this.runtime, lastfm::now_millis(), cx);
                     if this.main_scroll.tick(&this.main_scroll_config) {
                         should_notify = true;
                     }

@@ -7,7 +7,7 @@ use std::time::Instant;
 use nekowg::{Entity, Pixels};
 
 use crate::app::page::PageSnapshot;
-use crate::page::{daily_tracks, discover, home, library, login, next, playlist, search, settings};
+use crate::page::{daily_tracks, discover, home, library, next, playlist, search, settings};
 
 use super::key::PageKey;
 
@@ -23,7 +23,6 @@ pub(super) enum PageSlot {
     Next(Entity<next::NextPageView>),
     Playlist(Entity<playlist::PlaylistPageView>),
     Settings(Entity<settings::SettingsPageView>),
-    Login(Entity<login::LoginPageView>),
     Unknown(Entity<UnknownPageView>),
 }
 
