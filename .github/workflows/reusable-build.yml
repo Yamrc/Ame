@@ -46,26 +46,35 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_suffix: linux-x86_64
+            artifact_suffix: x86_64-unknown-linux-gnu
             bin_name: ame
             include_portable: true
-            portable_name: ame-linux-x86_64
-            installer_name: ame-linux-x86_64.deb
-            installer_glob: ame-linux-x86_64.deb
+            portable_name: ame-x86_64-unknown-linux-gnu
+            installer_name: ame-x86_64-unknown-linux-gnu.deb
+            installer_glob: ame-x86_64-unknown-linux-gnu.deb
           - os: windows-latest
-            artifact_suffix: windows-x86_64
+            artifact_suffix: x86_64-pc-windows-msvc
             bin_name: ame.exe
             include_portable: false
-            portable_name: ame-windows-x86_64.exe
-            installer_name: ame-windows-x86_64.msi
-            installer_glob: ame-windows-x86_64.msi
+            portable_name: ame-x86_64-pc-windows-msvc.exe
+            installer_name: ame-x86_64-pc-windows-msvc.msi
+            installer_glob: ame-x86_64-pc-windows-msvc.msi
           - os: macos-latest
-            artifact_suffix: macos-arm64
+            artifact_suffix: aarch64-apple-darwin
             bin_name: ame
             include_portable: true
-            portable_name: ame-macos-arm64
-            installer_name: ame-macos-arm64.pkg
-            installer_glob: ame-macos-arm64.pkg
+            portable_name: ame-aarch64-apple-darwin
+            installer_name: ame-aarch64-apple-darwin.pkg
+            installer_glob: ame-aarch64-apple-darwin.pkg
+            macos_installer_kind: pkg
+          - os: macos-15-intel
+            artifact_suffix: x86_64-apple-darwin
+            bin_name: ame
+            include_portable: true
+            portable_name: ame-x86_64-apple-darwin
+            installer_name: ame-x86_64-apple-darwin.dmg
+            installer_glob: ame-x86_64-apple-darwin.dmg
+            macos_installer_kind: dmg
 
     steps:
       - name: step::checkout
@@ -148,7 +157,7 @@ jobs:
           light.exe -ext WixUIExtension -ext WixUtilExtension -cultures:zh-cn -loc "resouses/packaging/windows/zh-cn.wxl" -out "dist/${{ matrix.installer_name }}" "$msiWixobj"
 
       - name: step::build_PKG_installer
-        if: inputs.include_installers && runner.os == 'macOS'
+        if: inputs.include_installers && runner.os == 'macOS' && matrix.macos_installer_kind == 'pkg'
         shell: bash
         run: |
           set -euo pipefail
@@ -160,6 +169,42 @@ jobs:
             --identifier com.yamrc.ame \
             --version "${APP_VERSION}" \
             --install-location / \
+            "dist/${{ matrix.installer_name }}"
+
+      - name: step::build_DMG_installer
+        if: inputs.include_installers && runner.os == 'macOS' && matrix.macos_installer_kind == 'dmg'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist/dmgroot
+          mkdir -p "dist/dmgroot/Ame.app/Contents/MacOS"
+          install -m 0755 target/release/ame "dist/dmgroot/Ame.app/Contents/MacOS/ame"
+          cat > "dist/dmgroot/Ame.app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>ame</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.yamrc.ame</string>
+            <key>CFBundleName</key>
+            <string>Ame</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${APP_VERSION}</string>
+            <key>CFBundleVersion</key>
+            <string>${APP_VERSION}</string>
+          </dict>
+          </plist>
+          EOF
+          ln -s /Applications "dist/dmgroot/Applications"
+          hdiutil create \
+            -volname "Ame" \
+            -srcfolder "dist/dmgroot" \
+            -ov \
+            -format UDZO \
             "dist/${{ matrix.installer_name }}"
 
       - name: step::upload_portable_artifact
