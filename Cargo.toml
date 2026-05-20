@@ -47,7 +47,7 @@ redb = "4.1.0"
 md-5 = "0.11.0"
 nekowg = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2"}
 nekowg_platform = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2" }
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 parking_lot = "0.12.5"
 smol = "2.0.2"
 num-bigint = "0.4.6"
@@ -66,6 +66,6 @@ tracing-subscriber = { version = "0.3.22", features = [
     "local-time",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.52.1", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
 tiny_http = "0.12.0"
 webbrowser = "1.2.1"
