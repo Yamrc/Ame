@@ -199,8 +199,8 @@ impl OutputBackend for CpalBackend {
         let sample_format = supported.sample_format();
         let config: StreamConfig = supported.into();
 
-        let volume = Arc::new(AtomicU32::new(request.volume.clamp(0.0, 1.0).to_bits()));
-        let volume_clone = Arc::clone(&volume);
+        let gain = Arc::new(AtomicU32::new(volume_to_gain(request.volume).to_bits()));
+        let gain_clone = Arc::clone(&gain);
         let tx = request.event_tx;
         let stream_id = request.stream_id;
         let drain_state = request.drain_state;
@@ -210,7 +210,7 @@ impl OutputBackend for CpalBackend {
                 &device,
                 &config,
                 request.consumer,
-                volume_clone,
+                gain_clone,
                 tx,
                 stream_id,
                 Arc::clone(&drain_state),
@@ -219,7 +219,7 @@ impl OutputBackend for CpalBackend {
                 &device,
                 &config,
                 request.consumer,
-                volume_clone,
+                gain_clone,
                 tx,
                 stream_id,
                 Arc::clone(&drain_state),
@@ -228,7 +228,7 @@ impl OutputBackend for CpalBackend {
                 &device,
                 &config,
                 request.consumer,
-                volume_clone,
+                gain_clone,
                 tx,
                 stream_id,
                 drain_state,
@@ -242,7 +242,7 @@ impl OutputBackend for CpalBackend {
 
         Ok(Box::new(CpalOutputSession {
             stream,
-            volume,
+            gain,
             sample_rate: config.sample_rate,
             channels: config.channels,
             device_name,
@@ -254,7 +254,7 @@ fn build_output_stream<T>(
     device: &Device,
     config: &StreamConfig,
     mut consumer: RingConsumer,
-    volume: Arc<AtomicU32>,
+    gain: Arc<AtomicU32>,
     event_tx: Sender<BackendNotification>,
     stream_id: u64,
     drain_state: Arc<PlaybackDrainState>,
@@ -266,12 +266,12 @@ where
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _| {
-            let volume = f32::from_bits(volume.load(Ordering::Relaxed));
+            let gain = f32::from_bits(gain.load(Ordering::Relaxed));
             let mut played_samples = 0;
             for output in data.iter_mut() {
                 if let Some(sample) = consumer.try_pop() {
                     played_samples += 1;
-                    *output = T::from_sample(sample * volume);
+                    *output = T::from_sample(sample * gain);
                 } else {
                     *output = T::from_sample(0.0);
                 }
@@ -293,9 +293,20 @@ where
     Ok(stream)
 }
 
+const VOLUME_GAIN_RANGE_DB: f32 = 60.0;
+
+fn volume_to_gain(volume: f32) -> f32 {
+    let volume = volume.clamp(0.0, 1.0);
+    if volume <= 0.0 {
+        0.0
+    } else {
+        10.0_f32.powf((-VOLUME_GAIN_RANGE_DB * (1.0 - volume)) / 20.0)
+    }
+}
+
 struct CpalOutputSession {
     stream: Stream,
-    volume: Arc<AtomicU32>,
+    gain: Arc<AtomicU32>,
     sample_rate: u32,
     channels: u16,
     device_name: String,
@@ -313,8 +324,8 @@ impl OutputSession for CpalOutputSession {
     }
 
     fn set_volume(&self, volume: f32) {
-        self.volume
-            .store(volume.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        self.gain
+            .store(volume_to_gain(volume).to_bits(), Ordering::Relaxed);
     }
 
     fn sample_rate(&self) -> u32 {
@@ -393,7 +404,36 @@ fn device_name(device: &Device) -> std::result::Result<String, cpal::DeviceNameE
 
 #[cfg(test)]
 mod tests {
-    use super::PlaybackDrainState;
+    use super::{PlaybackDrainState, volume_to_gain};
+
+    fn assert_approx_eq(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < 0.000_001,
+            "actual={actual}, expected={expected}"
+        );
+    }
+
+    #[test]
+    fn volume_to_gain_preserves_mute_and_unity() {
+        assert_eq!(volume_to_gain(-1.0), 0.0);
+        assert_eq!(volume_to_gain(0.0), 0.0);
+        assert_eq!(volume_to_gain(1.0), 1.0);
+        assert_eq!(volume_to_gain(2.0), 1.0);
+    }
+
+    #[test]
+    fn volume_to_gain_uses_sixty_db_curve() {
+        assert_approx_eq(volume_to_gain(0.01), 10.0_f32.powf(-59.4 / 20.0));
+        assert_approx_eq(volume_to_gain(0.5), 10.0_f32.powf(-30.0 / 20.0));
+        assert_approx_eq(volume_to_gain(0.7), 10.0_f32.powf(-18.0 / 20.0));
+    }
+
+    #[test]
+    fn volume_to_gain_is_monotonic_and_quiet_values_are_below_linear_gain() {
+        assert!(volume_to_gain(0.01) < 0.01);
+        assert!(volume_to_gain(0.1) < volume_to_gain(0.5));
+        assert!(volume_to_gain(0.5) < volume_to_gain(1.0));
+    }
 
     #[test]
     fn drain_notification_waits_for_empty_callback_after_last_samples() {
