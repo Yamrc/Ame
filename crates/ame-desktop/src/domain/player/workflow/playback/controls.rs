@@ -40,6 +40,22 @@ pub fn commit_seek_ratio<T>(runtime: &AppRuntime, ratio: f32, cx: &mut Context<T
     let ratio = ratio.clamp(0.0, 1.0);
     let duration_ms = runtime.player.read(cx).duration_ms.max(1);
     let target_ms = ((duration_ms as f32) * ratio) as u64;
+    seek_to_position_ms(runtime, target_ms, cx);
+}
+
+pub fn seek_to_position_ms<T>(runtime: &AppRuntime, position_ms: u64, cx: &mut Context<T>) {
+    let duration_ms = {
+        let player = runtime.player.read(cx);
+        if player.duration_ms != 0 {
+            player.duration_ms
+        } else {
+            player
+                .current_item()
+                .and_then(|item| item.duration_ms)
+                .unwrap_or(0)
+        }
+    };
+    let target_ms = clamp_seek_position(position_ms, duration_ms);
     match with_audio_bridge(runtime, |audio| {
         audio.send(AudioCommand::Seek(SeekTarget::ms(target_ms)))
     }) {
@@ -54,6 +70,32 @@ pub fn commit_seek_ratio<T>(runtime: &AppRuntime, ratio: f32, cx: &mut Context<T
         cx.notify();
     });
     persist_player_progress(runtime, cx);
+}
+
+pub fn stop_preserving_queue<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
+    lastfm::finalize_playback(runtime, cx);
+    runtime.player.update(cx, |player, cx| {
+        player.is_playing = false;
+        player.position_ms = 0;
+        cx.notify();
+    });
+    match with_audio_bridge(runtime, |audio| audio.send(AudioCommand::Stop)) {
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => {
+            auth::push_shell_error(runtime, format!("Failed to stop playback: {err}"), cx)
+        }
+        Err(err) => auth::push_shell_error(runtime, format!("Failed to stop playback: {err}"), cx),
+    }
+    persist_player_runtime(runtime, cx);
+    persist_player_progress(runtime, cx);
+}
+
+fn clamp_seek_position(position_ms: u64, duration_ms: u64) -> u64 {
+    if duration_ms == 0 {
+        position_ms
+    } else {
+        position_ms.min(duration_ms)
+    }
 }
 
 pub fn cycle_play_mode<T>(runtime: &AppRuntime, cx: &mut Context<T>) {
@@ -158,10 +200,19 @@ pub fn play_next<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
 
 pub(super) fn play_current<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {
     let player = runtime.player.read(cx).clone();
-    let Some(current_index) = player.current_index else {
+    let Some(current_index) = player
+        .current_index
+        .filter(|index| *index < player.queue.len())
+        .or_else(|| (!player.queue.is_empty()).then_some(0))
+    else {
         return;
     };
-    start_playback_at(runtime, current_index, player.position_ms, true, cx);
+    let start_ms = if player.current_index == Some(current_index) {
+        player.position_ms
+    } else {
+        0
+    };
+    start_playback_at(runtime, current_index, start_ms, true, cx);
 }
 
 pub fn sync_audio_bridge<T: 'static>(runtime: &AppRuntime, cx: &mut Context<T>) {

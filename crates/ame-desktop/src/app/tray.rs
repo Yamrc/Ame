@@ -84,7 +84,7 @@ fn with_main_root(cx: &mut App, f: impl FnOnce(WeakEntity<RootView>, &mut App)) 
     }
 }
 
-fn on_show_window(_: &TrayShowWindow, cx: &mut App) {
+pub fn show_main_window(cx: &mut App) {
     cx.activate(true);
     with_main_window(cx, |window, cx| {
         if let Err(err) = window.update(cx, |_, window, _| {
@@ -94,6 +94,10 @@ fn on_show_window(_: &TrayShowWindow, cx: &mut App) {
             error!("show window failed: {err}");
         }
     });
+}
+
+fn on_show_window(_: &TrayShowWindow, cx: &mut App) {
+    show_main_window(cx);
 }
 
 fn on_toggle_play(_: &TrayTogglePlay, cx: &mut App) {

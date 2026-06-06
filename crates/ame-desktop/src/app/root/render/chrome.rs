@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[cfg(target_os = "windows")]
+use std::ffi::c_void;
+
 use nekowg::{AnyElement, App, Context, Window, div, prelude::*, px};
 #[cfg(target_os = "windows")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -36,7 +39,7 @@ fn toggle_max_restore_window(window: &mut Window) {
     };
 
     unsafe {
-        ShowWindowAsync(handle.hwnd.get() as *mut core::ffi::c_void, command);
+        ShowWindowAsync(handle.hwnd.get() as *mut c_void, command);
     }
 }
 

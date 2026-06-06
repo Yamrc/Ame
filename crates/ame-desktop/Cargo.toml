@@ -31,6 +31,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 qrcode.workspace = true
 rand.workspace = true
+souvlaki.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 md-5.workspace = true
@@ -39,4 +40,4 @@ webbrowser.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle = "0.6.2"
-windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61.2", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

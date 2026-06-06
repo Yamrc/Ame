@@ -1,5 +1,6 @@
 mod actions;
 mod lifecycle;
+mod media_session;
 mod render;
 
 use std::time::Instant;
@@ -9,6 +10,7 @@ use nekowg::{Context, Entity, Subscription, Window, prelude::*};
 
 use crate::app::env::AppEnv;
 use crate::app::page_host::PageHostView;
+use crate::app::root::media_session::MediaSessionManager;
 use crate::app::runtime::{AppRuntime, RuntimeBootstrap};
 use crate::component::{
     input,
@@ -28,11 +30,12 @@ pub struct RootView {
     main_scroll_config: SmoothScrollConfig,
     last_progress_ui_notify_at: Instant,
     last_player_progress_persist_at: Instant,
+    media_session: MediaSessionManager,
     _audio_runtime: Option<AudioRuntimeHandle>,
 }
 
 impl RootView {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let RuntimeBootstrap {
             runtime,
             env,
@@ -87,11 +90,13 @@ impl RootView {
             main_scroll_config,
             last_progress_ui_notify_at: Instant::now(),
             last_player_progress_persist_at: Instant::now(),
+            media_session: MediaSessionManager::new(window),
             _audio_runtime: audio_runtime,
         };
         root.main_scroll.target_y = nekowg::px(0.);
         root.setup_subscriptions(cx);
         root.sync_player_controls(cx);
+        root.sync_media_session(Instant::now(), cx);
         root.sync_route(cx);
         root.prime_session(cx);
         root.spawn_runtime_tick(tick_ms, cx);

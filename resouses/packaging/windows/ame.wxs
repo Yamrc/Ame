@@ -81,7 +81,9 @@
               Name="Ame"
               Description="Ame"
               Target="[INSTALLFOLDER]ame.exe"
-              WorkingDirectory="INSTALLFOLDER" />
+              WorkingDirectory="INSTALLFOLDER">
+              <ShortcutProperty Key="System.AppUserModel.ID" Value="NeoNekos.Ame" />
+            </Shortcut>
             <RemoveFolder Id="RemoveAmeProgramMenuFolder" On="uninstall" />
             <RegistryValue
               Root="HKCU"

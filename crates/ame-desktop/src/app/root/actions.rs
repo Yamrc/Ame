@@ -82,6 +82,7 @@ impl RootView {
 
     pub(crate) fn prepare_app_exit(&mut self, cx: &mut Context<Self>) {
         player::prepare_app_exit(&self.runtime, cx);
+        self.media_session.publish_stopped();
     }
 
     pub(crate) fn tray_toggle_playback(&mut self, cx: &mut Context<Self>) {

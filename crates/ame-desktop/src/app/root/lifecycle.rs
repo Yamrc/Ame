@@ -94,6 +94,8 @@ impl RootView {
                     let mut should_notify = false;
 
                     player::sync_audio_bridge(&this.runtime, cx);
+                    this.drain_media_session_events(cx);
+                    this.sync_media_session(now, cx);
                     player::persist_progress_by_interval(
                         &this.runtime,
                         &mut this.last_player_progress_persist_at,

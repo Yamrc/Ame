@@ -26,6 +26,9 @@ use rust_embed::RustEmbed;
 use std::{borrow::Cow, collections::HashSet};
 use tracing::warn;
 
+#[cfg(target_os = "windows")]
+const WINDOWS_APP_USER_MODEL_ID: &str = "NeoNekos.Ame";
+
 #[derive(RustEmbed)]
 #[folder = "../../resouses"]
 struct Assets;
@@ -62,6 +65,7 @@ impl AssetSource for Assets {
 
 fn main() {
     init_logger();
+    init_windows_app_identity();
     application()
         .with_assets(Assets)
         .with_http_client(gpui_http::build_http_client("ame/1").expect("set http client failed"))
@@ -116,3 +120,20 @@ fn main() {
             cx.activate(true);
         });
 }
+
+#[cfg(target_os = "windows")]
+fn init_windows_app_identity() {
+    use windows_sys::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+
+    let app_id = WINDOWS_APP_USER_MODEL_ID
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let result = unsafe { SetCurrentProcessExplicitAppUserModelID(app_id.as_ptr()) };
+    if result < 0 {
+        warn!("failed to set Windows AppUserModelID: HRESULT 0x{result:08X}");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn init_windows_app_identity() {}
