@@ -25,11 +25,11 @@ strip = true
 
 [workspace.dependencies]
 anyhow = "1.0.101"
-aes = "0.9.0"
+aes = "0.9.1"
 audioadapter-buffers = "3.0.0"
 blake3 = "1.8.5"
 base64 = "0.22.1"
-cbc = "0.2.0"
+cbc = "0.2.1"
 cpal = "0.17.1"
 dirs = "6.0.0"
 futures = "0.3.31"
@@ -47,15 +47,15 @@ redb = "4.1.0"
 md-5 = "0.11.0"
 nekowg = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2"}
 nekowg_platform = { git = "https://github.com/NeoNekos/NekoWG.git", branch = "master", version = "0.2" }
-dashmap = "6.1.0"
+dashmap = "6.2.1"
 parking_lot = "0.12.5"
 smol = "2.0.2"
 num-bigint = "0.4.6"
 rand = "0.10.1"
-reqwest = "0.13.3"
+reqwest = "0.13.4"
 rsa = "0.9.10"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 qrcode = "0.14.1"
 rubato = "2.0.0"
 ringbuf = "0.4.8"
@@ -66,6 +66,6 @@ tracing-subscriber = { version = "0.3.22", features = [
     "local-time",
 ] }
 thiserror = "2.0.18"
-tokio = { version = "1.52.1", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
 tiny_http = "0.12.0"
 webbrowser = "1.2.1"
